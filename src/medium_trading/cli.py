@@ -13,6 +13,7 @@ from medium_trading.backtest.validation import (
     evaluate_symbol,
 )
 from medium_trading.config import Settings
+from medium_trading.crypto_long_baseline import evaluate_btc_long_baseline
 from medium_trading.daily_evaluation import (
     DailyStrategyEvaluation,
     evaluate_daily_strategy,
@@ -38,6 +39,7 @@ from medium_trading.ml_filter import forward_evaluation_payload as ml_forward_pa
 from medium_trading.strategy import (
     CryptoDailyVolatilityExpansionStrategy,
     CryptoIntradayMomentumContinuationStrategy,
+    CryptoTrendLongStrategy,
     GoldLondonNewYorkBreakoutStrategy,
     GoldNewYorkExhaustionReversalStrategy,
     GoldNewYorkMomentumContinuationStrategy,
@@ -62,6 +64,7 @@ _STRATEGY_CHOICES = (
     "gold-ny-exhaustion-reversal",
     "crypto-daily-volatility-expansion",
     "crypto-intraday-momentum-continuation",
+    "crypto-trend-long",
 )
 
 
@@ -268,6 +271,17 @@ def main() -> None:
     daily_evaluate.add_argument("--risk", type=float, default=0.005)
     daily_evaluate.add_argument("--json", dest="json_output")
 
+    btc_long = subparsers.add_parser("btc-long-evaluate")
+    btc_long.add_argument(
+        "--data",
+        required=True,
+        help="BTC/USD M30 CSV, e.g. data/crypto/BTC_USD_M30.csv",
+    )
+    btc_long.add_argument("--cost-usd", type=float, default=50.0)
+    btc_long.add_argument("--starting-equity", type=float, default=10_000.0)
+    btc_long.add_argument("--risk", type=float, default=0.005)
+    btc_long.add_argument("--json", dest="json_output")
+
     args = parser.parse_args()
     if args.command == "download-dukascopy":
         _download_dukascopy(args)
@@ -291,6 +305,8 @@ def main() -> None:
         _direct_ml_final_evaluate(args)
     elif args.command == "daily-evaluate":
         _daily_evaluate(args)
+    elif args.command == "btc-long-evaluate":
+        _btc_long_evaluate(args)
 
 
 def _download_dukascopy(args: argparse.Namespace) -> None:
@@ -701,6 +717,48 @@ def _daily_evaluate(args: argparse.Namespace) -> None:
         print(f"wrote daily evaluation report to {output}")
 
 
+def _btc_long_evaluate(args: argparse.Namespace) -> None:
+    candles = load_candles(Path(args.data))
+    evaluation = evaluate_btc_long_baseline(
+        candles=candles,
+        round_trip_cost_usd=args.cost_usd,
+        starting_equity=args.starting_equity,
+        risk_fraction=args.risk,
+    )
+    summary = evaluation["summary"]
+    print("BTC/USD Trend LONG v1")
+    print(
+        f"trades={summary['trades']} "
+        f"grossR={summary['gross_r']:.2f} "
+        f"netR={summary['net_r']:.2f} "
+        f"gPF={summary['gross_profit_factor']:.2f} "
+        f"nPF={summary['profit_factor']:.2f}"
+    )
+    print(
+        f"equity=${summary['starting_equity_usd']:.2f} -> "
+        f"${summary['final_equity_usd']:.2f} "
+        f"net=${summary['net_usd']:.2f}"
+    )
+    print(
+        f"MFE24 avg={summary['average_mfe_r_24h']:.2f}R "
+        f"median={summary['median_mfe_r_24h']:.2f}R "
+        f"reached1R={summary['reached_1r_24h_rate']:.1%} "
+        f"reached2R={summary['reached_2r_24h_rate']:.1%}"
+    )
+    print(
+        "stopped then reached +1R after exit: "
+        f"{summary['stopped_then_reached_1r_after_exit']}"
+    )
+
+    if args.json_output:
+        output = Path(args.json_output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(
+            json.dumps(evaluation, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        print(f"wrote BTC LONG baseline report to {output}")
+
 def _strategy_from_name(name: str) -> Strategy:
     if name == "trend-pullback":
         return TrendPullbackStrategy()
@@ -724,6 +782,8 @@ def _strategy_from_name(name: str) -> Strategy:
         return CryptoDailyVolatilityExpansionStrategy()
     if name == "crypto-intraday-momentum-continuation":
         return CryptoIntradayMomentumContinuationStrategy()
+    if name == "crypto-trend-long":
+        return CryptoTrendLongStrategy()
     raise ValueError(f"unsupported strategy: {name}")
 
 
@@ -746,6 +806,8 @@ def _strategy_backtest_defaults(name: str) -> tuple[float, int]:
         "crypto-intraday-momentum-continuation",
     }:
         return 1.5, 8
+    if name == "crypto-trend-long":
+        return 2.0, 48
     return 2.0, 48
 
 
