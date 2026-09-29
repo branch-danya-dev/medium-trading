@@ -22,80 +22,93 @@ ML, multi-service architecture and exchange-specific complexity are explicitly o
 Live trading and backtesting must call the same strategy and risk code. Only the data/execution adapters
 differ.
 
-```text
-Market adapter
-     |
-Normalized candles
-     |
-Market/strategy core
-     |
-Opportunity selector
-     |
-Risk + cost gate
-     |
-Execution adapter
-```
+    Market adapter
+         |
+    Normalized candles
+         |
+    Market/strategy core
+         |
+    Opportunity selector
+         |
+    Risk + cost gate
+         |
+    Execution adapter
 
 The project must prove positive expectancy after realistic costs before it grows.
 
 ## Bootstrap
 
-```bash
-python -m venv .venv
-# Windows
-.venv\Scripts\activate
-# Linux/macOS
-source .venv/bin/activate
+    python -m venv .venv
 
-python -m pip install -U pip
-pip install -e ".[dev]"
-pytest
-ruff check .
-```
+Windows:
 
-## Historical data: Dukascopy (primary)
+    .venv\Scripts\activate
 
-The primary historical-data path is Dukascopy Historical Data Export. It does not require an OANDA
-account, API token or `.env` file.
+Linux/macOS:
 
-Download either:
+    source .venv/bin/activate
 
-- 30-minute candle CSV; or
-- bid/ask tick CSV if you want the importer to aggregate M30 candles and report observed spread.
+Then:
 
-Then normalize it:
+    python -m pip install -U pip
+    pip install -e ".[dev]"
+    pytest
+    ruff check .
 
-```bash
-medium-trading import-dukascopy \
-  --symbol EUR/USD \
-  --input downloads/EURUSD.csv \
-  --output data/EUR_USD_M30.csv
-```
+## Automatic Dukascopy history download
 
-The importer accepts comma, semicolon or tab separated CSV, normalizes common Dukascopy timestamp/header
-formats, and writes the same internal M30 format used by the backtest. Tick imports retain average
-bid/ask spread in each M30 candle and print the observed mean spread in pips.
+The primary historical-data path requires no broker account, API token or .env file.
 
-Repeat for:
+To download the full MVP universe for an inclusive UTC range:
 
-```text
-EUR/USD
-GBP/USD
-USD/JPY
-AUD/USD
-```
+    medium-trading download-dukascopy ^
+      --from 2020-01-01 ^
+      --to 2026-01-01
 
-OANDA v20 remains in the repository only as an optional fallback. Its credentials in `.env.example`
-are not needed for the normal Dukascopy workflow.
+In PowerShell use backticks instead of carets for line continuation, or run it on one line.
+
+With no --symbol arguments the command downloads:
+
+- EUR/USD
+- GBP/USD
+- USD/JPY
+- AUD/USD
+
+and writes:
+
+    data/EUR_USD_M30.csv
+    data/GBP_USD_M30.csv
+    data/USD_JPY_M30.csv
+    data/AUD_USD_M30.csv
+
+To download explicit pairs:
+
+    medium-trading download-dukascopy --symbol EUR/USD --symbol GBP/USD --from 2024-01-01 --to 2026-01-01 --workers 4 --output-dir data
+
+The downloader:
+
+- requests Dukascopy minute BID candles by UTC calendar date;
+- downloads up to four days concurrently by default;
+- retries transient HTTP errors;
+- skips Saturdays but keeps Sundays because FX can reopen late Sunday UTC;
+- converts one-minute source candles into complete M30 bars;
+- refuses to silently save a dataset when a requested day still fails after retries;
+- prints progress every 100 completed dates.
+
+BID is the default because current backtests model spread/slippage separately. ASK can be requested with
+--side ASK.
+
+## Manual Dukascopy import fallback
+
+Browser exports remain supported:
+
+    medium-trading import-dukascopy --symbol EUR/USD --input downloads/EURUSD.csv --output data/EUR_USD_M30.csv
+
+OANDA v20 remains optional and is not required for the MVP.
 
 ## Backtest
 
-```bash
-medium-trading backtest \
-  --symbol EUR/USD \
-  --data data/EUR_USD_M30.csv \
-  --round-trip-cost-pips 1.2
-```
+    medium-trading backtest --symbol EUR/USD --data data/EUR_USD_M30.csv --round-trip-cost-pips 1.2
 
 Current simulation assumptions are deliberately conservative:
 
@@ -113,29 +126,25 @@ Current simulation assumptions are deliberately conservative:
 The evaluation command is the default strategy gate. It runs each pair through a chronological
 60% train / 20% validation / 20% out-of-sample split and repeats the out-of-sample run at 2x costs.
 
-```bash
-medium-trading evaluate \
-  --dataset EUR/USD=data/EUR_USD_M30.csv \
-  --dataset GBP/USD=data/GBP_USD_M30.csv \
-  --dataset USD/JPY=data/USD_JPY_M30.csv \
-  --dataset AUD/USD=data/AUD_USD_M30.csv \
-  --cost EUR/USD=1.0 \
-  --cost GBP/USD=1.2 \
-  --cost USD/JPY=1.0 \
-  --cost AUD/USD=1.2 \
-  --json artifacts/trend_pullback_eval.json
-```
+    medium-trading evaluate ^
+      --dataset EUR/USD=data/EUR_USD_M30.csv ^
+      --dataset GBP/USD=data/GBP_USD_M30.csv ^
+      --dataset USD/JPY=data/USD_JPY_M30.csv ^
+      --dataset AUD/USD=data/AUD_USD_M30.csv ^
+      --cost EUR/USD=1.0 ^
+      --cost GBP/USD=1.2 ^
+      --cost USD/JPY=1.0 ^
+      --cost AUD/USD=1.2 ^
+      --json artifacts/trend_pullback_eval.json
 
 Validation and out-of-sample segments receive historical candles before their start only as indicator
 warmup. No trade may start in that warmup. The out-of-sample segment must not be used for parameter
 tuning.
 
-The multi-pair report is a strategy evaluation, not yet a capital-constrained portfolio simulation.
-
 ## Status
 
-Dukascopy CSV import plus historical multi-pair evaluation path are implemented. Live/paper execution is
-intentionally not implemented until the strategy survives realistic historical costs and out-of-sample
-validation.
+Automatic Dukascopy date-range download, manual CSV import, and historical multi-pair evaluation are
+implemented. Live/paper execution is intentionally not implemented until the strategy survives realistic
+historical costs and out-of-sample validation.
 
-See [agent.md](agent.md) before making changes.
+See agent.md before making changes.
