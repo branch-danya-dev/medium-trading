@@ -44,6 +44,7 @@ class Signal:
     confidence: float
     strategy: str
     reasons: tuple[str, ...]
+    target: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
