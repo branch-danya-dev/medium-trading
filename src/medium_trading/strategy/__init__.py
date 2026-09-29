@@ -4,7 +4,10 @@ from medium_trading.strategy.crypto_daily_volatility_expansion import (
 from medium_trading.strategy.crypto_intraday_momentum_continuation import (
     CryptoIntradayMomentumContinuationStrategy,
 )
-from medium_trading.strategy.crypto_trend_long import CryptoTrendLongStrategy
+from medium_trading.strategy.crypto_trend_long import (
+    CryptoTrendLongStrategy,
+    CryptoTrendLongV11Strategy,
+)
 from medium_trading.strategy.gold_london_ny_breakout import (
     GoldLondonNewYorkBreakoutStrategy,
 )
@@ -27,6 +30,7 @@ __all__ = [
     "CryptoDailyVolatilityExpansionStrategy",
     "CryptoIntradayMomentumContinuationStrategy",
     "CryptoTrendLongStrategy",
+    "CryptoTrendLongV11Strategy",
     "GoldLondonNewYorkBreakoutStrategy",
     "GoldNewYorkExhaustionReversalStrategy",
     "GoldNewYorkMomentumContinuationStrategy",
