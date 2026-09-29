@@ -13,7 +13,7 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 - Legacy FX universe: EUR/USD, GBP/USD, USD/JPY, AUD/USD plus four external FX pairs used in validation.
 - Current market: Crypto, starting with BTC/USD.
 - Core data timeframe for the current candidate: 30m.
-- Current research candidate: Bybit BTCUSDT Trend LONG v1.1 + ML noise-filter v0.1 feasibility test.
+- Current research candidate: Bybit BTCUSDT Trend LONG v1.1 + real-move ML filter v0.2 feasibility test.
 - Default project starting equity model: USD 1,000. The BTC Trend LONG v1 diagnostic baseline uses USD 10,000 so R-to-USD interpretation is explicit.
 - Default risk: 0.5% of equity per trade.
 - Maximum combined open risk: 1.0% of equity.
@@ -175,6 +175,27 @@ Noise-filter v0.1 is frozen as follows:
 - report ordinary and 2x-cost trade metrics, clean precision/recall, class distribution and each yearly fold.
 
 v0.1 is a feasibility test, not an optimization pass. Do not tune features, probability threshold, label horizon, CLEAN definition, economic gate or model hyperparameters after seeing the first v0.1 result. First determine whether the fixed model has useful out-of-sample discrimination at all.
+
+The v0.1 result failed its feasibility purpose. Across the 2024-2025 development walk-forward test stream after the economic gate, CLEAN prevalence was about 47.3%, but the model selected 101/279 candidates with only 41.6% CLEAN precision and 31.8% recall. The economic gate alone improved the stream to +27.16R gross and -21.45R net, while economic-gate + ML deteriorated it to -15.57R gross and -34.38R net. The same failure direction appeared in both 2024 and 2025. Do not tune v0.1 thresholds or hyperparameters on these inspected years.
+
+The next frozen feasibility task is real-move ML filter v0.2. It deliberately simplifies the target instead of tuning the v0.1 model:
+- the deterministic Trend LONG v1.1 strategy remains unchanged;
+- the same economic gate remains unchanged at 8x target-distance / expected-cost;
+- the same 16 causal features remain unchanged;
+- the same HistGradientBoostingClassifier and all model hyperparameters remain unchanged;
+- probability threshold remains fixed at 0.50;
+- 2023-2025 remain development data and are no longer described as pristine out-of-sample because v0.1 results on 2024-2025 have already been inspected;
+- 2026 remains untouched and must not be used during v0.2 design or evaluation;
+- v0.2 binary label is REAL_MOVE versus NO_MOVE;
+- REAL_MOVE = price reaches +2.0R from the original entry at any time within 24 hours, regardless of whether the original stop was touched first;
+- NO_MOVE = +2.0R is not reached within 24 hours;
+- diagnostics split REAL_MOVE into DIRECT_MOVE (+2R before any stop touch) and POST_STOP_MOVE (stop touched first, then +2R within 24h);
+- if stop and +2R occur in the same M30 candle, classify timing as POST_STOP_MOVE conservatively, while the binary REAL_MOVE label remains true;
+- use the same fixed executed v1.1 candidate stream and do not introduce replacement candidates when the filter rejects one;
+- evaluate raw, economic-gate only, and economic-gate + ML trade metrics, but v0.2's primary feasibility question is classification: does model precision exceed the economic-gate REAL_MOVE base rate with useful recall in both development folds?
+- report precision, recall, base REAL_MOVE rate and precision lift for 2024 and 2025 separately and combined, plus DIRECT_MOVE / POST_STOP_MOVE / NO_MOVE distributions.
+
+v0.2 is not a profitability claim and is not allowed to tune features, target horizon, +2R label, economic gate, threshold or model hyperparameters after the result. If v0.2 cannot show meaningful discrimination over the base REAL_MOVE rate, the next discussion must focus on information/features or abandon this ML-filter approach rather than threshold hunting.
 
 Daily Income Gate is frozen before the first result. A strategy passes only if all conditions hold across the combined fixed test years:
 - at least 250 eligible session days;
