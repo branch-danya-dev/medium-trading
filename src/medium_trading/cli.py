@@ -37,6 +37,7 @@ from medium_trading.ml_filter import evaluation_payload as ml_evaluation_payload
 from medium_trading.ml_filter import forward_evaluation_payload as ml_forward_payload
 from medium_trading.strategy import (
     GoldLondonNewYorkBreakoutStrategy,
+    GoldNewYorkExhaustionReversalStrategy,
     GoldNewYorkMomentumContinuationStrategy,
     MeanReversionStrategy,
     OpeningRangeBreakoutQualityStrategy,
@@ -56,6 +57,7 @@ _STRATEGY_CHOICES = (
     "opening-range-breakout-quality",
     "gold-london-ny-breakout",
     "gold-ny-momentum-continuation",
+    "gold-ny-exhaustion-reversal",
 )
 
 
@@ -249,6 +251,7 @@ def main() -> None:
             "opening-range-breakout-quality",
             "gold-london-ny-breakout",
             "gold-ny-momentum-continuation",
+            "gold-ny-exhaustion-reversal",
         ),
         default="opening-range-breakout",
     )
@@ -701,6 +704,8 @@ def _strategy_from_name(name: str) -> Strategy:
         return GoldLondonNewYorkBreakoutStrategy()
     if name == "gold-ny-momentum-continuation":
         return GoldNewYorkMomentumContinuationStrategy()
+    if name == "gold-ny-exhaustion-reversal":
+        return GoldNewYorkExhaustionReversalStrategy()
     raise ValueError(f"unsupported strategy: {name}")
 
 
@@ -716,6 +721,8 @@ def _strategy_backtest_defaults(name: str) -> tuple[float, int]:
         "gold-ny-momentum-continuation",
     }:
         return 1.5, 6
+    if name == "gold-ny-exhaustion-reversal":
+        return 1.25, 4
     return 2.0, 48
 
 
