@@ -6,10 +6,11 @@ Compact medium-frequency systematic trading bot.
 
 The first version is intentionally small:
 
-- market: spot FX;
-- symbols: EUR/USD, GBP/USD, USD/JPY, AUD/USD;
-- core data timeframes: 4h, 1h, 30m;
-- current research candidate: final frozen Direct ML best-opportunity gate;
+- research markets are tested separately rather than forcing one universal strategy;
+- legacy FX research remains reproducible;
+- current market: USA500.IDX/USD and USATECH.IDX/USD index CFDs;
+- current candidate: frozen 30m US cash Opening Range Breakout;
+- daily-income consistency is now a primary evaluation target;
 - starting equity model: USD 1,000;
 - default risk: 0.5% per trade, 1.0% maximum combined open risk;
 - decisions are made from closed candles, not tick/order-book noise.
@@ -343,6 +344,56 @@ Run the final gate:
 The final kill-gate is strict and conjunctive: at least 500 selected trades, combined gross PF > 1.00,
 combined net PF >= 1.10, combined 2x-cost PF > 1.00, and positive net R in at least 2 of the 3 test
 years. If any condition fails, Direct ML is rejected and is not tuned again on these datasets.
+
+## Daily-income market research
+
+Direct ML failed its final pre-registered kill-gate and is rejected. The project now tests separate
+strategies for separate markets, with daily consistency measured directly instead of trying to force one
+universal model.
+
+The first candidate is a 30-minute Opening Range Breakout for the US 500 and US 100 Tech index CFDs:
+
+- opening range: 09:30-10:00 America/New_York;
+- first later M30 close outside the range, only through 13:00 New York time;
+- entry at the next M30 open;
+- stop at the opposite side of the opening range;
+- target at 1.5R;
+- maximum holding 6 M30 bars (3 hours);
+- maximum one breakout attempt per session;
+- 0.5% risk per trade.
+
+Initial research costs are frozen at 1.0 index price point round trip for USA500.IDX/USD and 3.0 index
+price points for USATECH.IDX/USD. Index costs are modeled in whole index price points, not FX pips.
+
+Download a fresh index dataset before evaluating the strategy:
+
+    medium-trading download-dukascopy ^
+      --symbol USA500.IDX/USD ^
+      --symbol USATECH.IDX/USD ^
+      --from 2020-01-01 ^
+      --to 2025-12-31 ^
+      --workers 4 ^
+      --output-dir data/index
+
+Then run the fixed 2023-2025 daily-income gate:
+
+    medium-trading daily-evaluate ^
+      --strategy opening-range-breakout ^
+      --dataset USA500.IDX/USD=data/index/USA500.IDX_USD_M30.csv ^
+      --dataset USATECH.IDX/USD=data/index/USATECH.IDX_USD_M30.csv ^
+      --cost USA500.IDX/USD=1.0 ^
+      --cost USATECH.IDX/USD=3.0 ^
+      --json artifacts/index_orb_daily_eval.json
+
+The daily gate is strict and conjunctive: at least 250 eligible sessions, at least 300 trades, >=70%
+active-session rate, >=45% profitable active days, positive average net R/session, net PF >=1.15,
+2x-cost PF >1.00, at least 2 positive yearly folds, >=60% positive months, worst day no worse than -2R,
+losing-day streak no longer than 8 sessions, and no single best day contributing 15% or more of total
+positive daily R.
+
+The project evaluates daily returns in R first. A requested daily percentage return is not used to tune
+the strategy; percentage expectations are considered only after a strategy survives the fixed research
+gate.
 
 ## Status
 
