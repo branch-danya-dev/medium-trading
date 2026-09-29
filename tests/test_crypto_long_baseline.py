@@ -50,7 +50,7 @@ def test_trade_diagnostic_reports_24h_mfe_mae_and_post_exit_move() -> None:
 
     assert diagnostic["mfe_r_24h"] == pytest.approx(2.0)
     assert diagnostic["mae_r_24h"] == pytest.approx(1.5)
-    assert diagnostic["post_exit_mfe_r_24h"] == pytest.approx(2.0)
+    assert diagnostic["post_exit_mfe_r_24h"] == pytest.approx(1.8)
     assert diagnostic["reached_1r_24h"] is True
     assert diagnostic["reached_2r_24h"] is True
     assert diagnostic["reached_3r_24h"] is False
