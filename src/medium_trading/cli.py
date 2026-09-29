@@ -16,6 +16,11 @@ from medium_trading.config import Settings
 from medium_trading.data import import_dukascopy, load_candles, save_candles
 from medium_trading.data.dukascopy_download import download_m30
 from medium_trading.data.oanda import OandaHistoryClient
+from medium_trading.direct_ml import (
+    evaluate_direct_ml_opportunities,
+    extract_direct_opportunities,
+)
+from medium_trading.direct_ml import evaluation_payload as direct_ml_payload
 from medium_trading.ml_filter import (
     evaluate_mean_reversion_ml_filter,
     evaluate_mean_reversion_ml_forward,
@@ -175,6 +180,23 @@ def main() -> None:
     ml_forward.add_argument("--risk", type=float, default=0.005)
     ml_forward.add_argument("--json", dest="json_output")
 
+    direct_ml = subparsers.add_parser("direct-ml-evaluate")
+    direct_ml.add_argument(
+        "--dataset",
+        action="append",
+        required=True,
+        help="Repeatable SYMBOL=CSV using frozen 2020-2025 research history",
+    )
+    direct_ml.add_argument(
+        "--cost",
+        action="append",
+        default=[],
+        help="Optional repeatable SYMBOL=PIPS override",
+    )
+    direct_ml.add_argument("--default-cost-pips", type=float, default=1.2)
+    direct_ml.add_argument("--risk", type=float, default=0.005)
+    direct_ml.add_argument("--json", dest="json_output")
+
     args = parser.parse_args()
     if args.command == "download-dukascopy":
         _download_dukascopy(args)
@@ -192,6 +214,8 @@ def main() -> None:
         _ml_evaluate(args)
     elif args.command == "ml-forward-evaluate":
         _ml_forward_evaluate(args)
+    elif args.command == "direct-ml-evaluate":
+        _direct_ml_evaluate(args)
 
 
 def _download_dukascopy(args: argparse.Namespace) -> None:
@@ -479,6 +503,46 @@ def _ml_forward_evaluate(args: argparse.Namespace) -> None:
         print(f"wrote ML forward evaluation report to {output}")
 
 
+def _direct_ml_evaluate(args: argparse.Namespace) -> None:
+    datasets = _parse_assignments(args.dataset, "dataset")
+    costs = {
+        symbol: float(value)
+        for symbol, value in _parse_assignments(args.cost, "cost").items()
+    }
+
+    opportunities = []
+    for symbol, filename in datasets.items():
+        config = BacktestConfig(
+            risk_fraction=args.risk,
+            target_r=2.0,
+            max_holding_bars=48,
+            round_trip_cost_pips=costs.get(symbol, args.default_cost_pips),
+        )
+        opportunities.extend(
+            extract_direct_opportunities(
+                symbol=symbol,
+                candles=load_candles(filename),
+                config=config,
+            )
+        )
+
+    evaluation = evaluate_direct_ml_opportunities(opportunities)
+    _print_direct_ml_evaluation(evaluation)
+
+    if args.json_output:
+        output = Path(args.json_output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(
+            json.dumps(
+                direct_ml_payload(evaluation),
+                indent=2,
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        print(f"wrote direct ML evaluation report to {output}")
+
+
 def _strategy_from_name(name: str) -> Strategy:
     if name == "trend-pullback":
         return TrendPullbackStrategy()
@@ -615,6 +679,34 @@ def _print_ml_evaluation(evaluation) -> None:
     print(
         "combined: "
         f"baseline={evaluation.combined_baseline.net_r:.2f}R, "
+        f"ml={evaluation.combined_model.net_r:.2f}R, "
+        f"ml_2x={evaluation.combined_model_2x_costs.net_r:.2f}R"
+    )
+
+
+def _print_direct_ml_evaluation(evaluation) -> None:
+    header = (
+        f"{'year':<6} {'train':>8} {'test':>8} {'select':>8} "
+        f"{'longR':>9} {'shortR':>9} {'mlR':>9} {'ml2xR':>9} "
+        f"{'mlPF':>7} {'ml2xPF':>8}"
+    )
+    print(header)
+    print("-" * len(header))
+
+    for fold in evaluation.folds:
+        print(
+            f"{fold.test_year:<6} {fold.train_samples:>8} {fold.test_samples:>8} "
+            f"{fold.selected_samples:>8} {fold.always_long.net_r:>9.2f} "
+            f"{fold.always_short.net_r:>9.2f} {fold.model.net_r:>9.2f} "
+            f"{fold.model_2x_costs.net_r:>9.2f} "
+            f"{fold.model.profit_factor:>7.2f} "
+            f"{fold.model_2x_costs.profit_factor:>8.2f}"
+        )
+
+    print(
+        "combined: "
+        f"always_long={evaluation.combined_always_long.net_r:.2f}R, "
+        f"always_short={evaluation.combined_always_short.net_r:.2f}R, "
         f"ml={evaluation.combined_model.net_r:.2f}R, "
         f"ml_2x={evaluation.combined_model_2x_costs.net_r:.2f}R"
     )
