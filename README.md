@@ -19,7 +19,8 @@ ML, multi-service architecture and exchange-specific complexity are explicitly o
 
 ## Design rule
 
-Live trading and backtesting must call the same strategy and risk code. Only the data/execution adapters differ.
+Live trading and backtesting must call the same strategy and risk code. Only the data/execution adapters
+differ.
 
 ```text
 Market adapter
@@ -50,12 +51,59 @@ python -m pip install -U pip
 pip install -e ".[dev]"
 pytest
 ruff check .
-python -m medium_trading.main
 ```
+
+## Historical data
+
+The first data adapter uses OANDA v20 only as a source of normalized M30 historical candles. Credentials
+are read from environment variables and are never stored in the repository.
+
+```bash
+medium-trading download-oanda \
+  --instrument EUR_USD \
+  --from 2020-01-01 \
+  --to 2026-01-01 \
+  --output data/EUR_USD_M30.csv
+```
+
+The downloader fetches M30 history in bounded chunks. The backtest derives 1h and 4h bars from the same
+M30 source, so higher-timeframe context cannot see unfinished future candles.
+
+## Backtest
+
+```bash
+medium-trading backtest \
+  --symbol EUR/USD \
+  --data data/EUR_USD_M30.csv \
+  --round-trip-cost-pips 1.2
+```
+
+A cost stress run is explicit:
+
+```bash
+medium-trading backtest \
+  --symbol EUR/USD \
+  --data data/EUR_USD_M30.csv \
+  --round-trip-cost-pips 1.2 \
+  --cost-stress 2
+```
+
+Current simulation assumptions are deliberately conservative:
+
+- strategy sees closed candles only;
+- entry happens at the next M30 open;
+- target is 2R by default;
+- stop is the structural stop emitted by the strategy;
+- maximum holding time is 48 M30 bars;
+- if stop and target are touched inside the same candle, stop is assumed first;
+- round-trip trading costs are deducted from every trade;
+- a setup is rejected if expected target movement is less than 8x modeled costs.
+
+These are baseline research assumptions, not a claim that Trend Pullback has validated edge.
 
 ## Status
 
-Repository bootstrap only. The included trend-pullback implementation is a deterministic baseline for
-development and testing, not a claim of validated trading edge.
+Repository bootstrap plus first historical backtest path. Live/paper execution is intentionally not
+implemented until the strategy survives realistic historical costs and out-of-sample validation.
 
 See [agent.md](agent.md) before making changes.

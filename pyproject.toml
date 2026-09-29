@@ -16,7 +16,7 @@ dev = [
 ]
 
 [project.scripts]
-medium-trading = "medium_trading.main:main"
+medium-trading = "medium_trading.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
