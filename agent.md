@@ -28,7 +28,9 @@ Volatility Breakout has been evaluated and is REJECTED: it was negative before c
 
 4H Time-Series Momentum has been evaluated and is REJECTED: it was negative before costs on out-of-sample data across all four MVP pairs. Do not tune or revive it without an explicit new research task.
 
-4H Mean Reversion / Range Trading is the current fixed baseline candidate. Parameters are locked before its first evaluation: prior 20-bar 4H mean and standard deviation, entry at an absolute z-score of at least 2.0, 30-bar efficiency-ratio range filter at or below 0.35, ATR14 volatility estimate, 1.5 ATR stop, target fixed at the prior 20-bar mean, signal only when a new 4H candle closes, and 192 M30 bars (4 days) maximum holding. It does not use 1H or 30m entry triggers. Do not tune these parameters on out-of-sample results.
+4H Mean Reversion / Range Trading is the current fixed baseline candidate. Parameters are locked: prior 20-bar 4H mean and standard deviation, entry at an absolute z-score of at least 2.0, 30-bar efficiency-ratio range filter at or below 0.35, ATR14 volatility estimate, 1.5 ATR stop, target fixed at the prior 20-bar mean, signal only when a new 4H candle closes, and 192 M30 bars (4 days) maximum holding. It does not use 1H or 30m entry triggers.
+
+Its first four-pair OOS was positive overall, but the external four-pair cross-instrument holdout was mixed and negative overall. Do not tune the strategy from those results. The next gate is a frozen temporal forward holdout on all eight researched FX pairs, with trades from 2026-01-02 through 2026-09-18, data extended through 2026-09-28 for exit horizon, ordinary costs and 2x costs.
 
 ## Architecture rules
 
@@ -87,6 +89,7 @@ Validation rules are mandatory:
 - never tune strategy parameters on the out-of-sample segment;
 - preserve enough pre-period candles only as indicator warmup;
 - report ordinary and 2x-cost out-of-sample results;
+- for temporal forward tests, use explicit trade start/end dates and keep warmup/exit-horizon data outside the entry window;
 - do not call a strategy profitable from one pair or one in-sample period.
 
 Never claim profitability from an in-sample backtest.
