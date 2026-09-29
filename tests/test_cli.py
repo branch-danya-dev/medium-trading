@@ -425,3 +425,27 @@ def test_btc_long_evaluate_parser_uses_fixed_baseline_defaults(monkeypatch) -> N
     assert args.cost_usd == 50.0
     assert args.starting_equity == 10_000.0
     assert args.risk == 0.005
+
+
+
+def test_btc_long_v1_1_parser_uses_frozen_defaults(monkeypatch) -> None:
+    captured = []
+
+    monkeypatch.setattr(cli, "_btc_long_v1_1_evaluate", captured.append)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "medium-trading",
+            "btc-long-v1-1-evaluate",
+            "--data",
+            "data/crypto/BTC_USD_M30.csv",
+        ],
+    )
+
+    cli.main()
+
+    args = captured[0]
+    assert args.cost_usd == 50.0
+    assert args.starting_equity == 10_000.0
+    assert args.risk == 0.005
