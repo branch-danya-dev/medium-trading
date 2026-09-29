@@ -1,7 +1,9 @@
+import json
 from datetime import UTC, date, datetime
 
 import pytest
 
+import medium_trading.data.dukascopy_download as dukascopy
 from medium_trading.data.dukascopy_download import (
     aggregate_m30,
     build_endpoint_url,
@@ -75,3 +77,36 @@ def test_negative_time_delta_is_rejected() -> None:
 
     with pytest.raises(ValueError):
         decode_minute_payload(payload)
+
+
+def test_connection_reset_is_retried(monkeypatch: pytest.MonkeyPatch) -> None:
+    payload = _payload()
+    calls = 0
+
+    class Response:
+        status = 200
+
+        def __enter__(self) -> "Response":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return json.dumps(payload).encode()
+
+    def fake_urlopen(*_args: object, **_kwargs: object) -> Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise ConnectionResetError(10054, "connection reset by peer")
+        return Response()
+
+    monkeypatch.setattr(dukascopy.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(dukascopy.time, "sleep", lambda _seconds: None)
+
+    result = dukascopy._fetch_day("EUR/JPY", "BID", date(2021, 1, 14))
+
+    assert result is not None
+    assert result["timestamp"] == payload["timestamp"]
+    assert calls == 2
