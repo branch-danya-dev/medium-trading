@@ -44,14 +44,25 @@ def test_aggregate_candles_builds_complete_one_hour_bars() -> None:
 class OneShotStrategy:
     name = "one_shot"
 
+    def __init__(
+        self,
+        *,
+        side: Side = Side.LONG,
+        stop: float = 1.0990,
+        trigger_length: int = 16,
+    ) -> None:
+        self.side = side
+        self.stop = stop
+        self.trigger_length = trigger_length
+
     def evaluate(self, context: StrategyContext) -> Signal | None:
-        if len(context.candles_30m) != 16:
+        if len(context.candles_30m) != self.trigger_length:
             return None
         return Signal(
             symbol=context.symbol,
-            side=Side.LONG,
+            side=self.side,
             entry=context.candles_30m[-1].close,
-            stop=1.0990,
+            stop=self.stop,
             confidence=1.0,
             strategy=self.name,
             reasons=("test",),
@@ -84,6 +95,9 @@ def test_backtest_enters_next_bar_and_deducts_costs() -> None:
     assert trade.gross_r == pytest.approx(2.0)
     assert trade.cost_r == pytest.approx(0.1)
     assert trade.net_r == pytest.approx(1.9)
+    assert report.gross_r == pytest.approx(2.0)
+    assert report.total_cost_r == pytest.approx(0.1)
+    assert report.gross_profit_factor == float("inf")
     assert report.final_equity == pytest.approx(1009.5)
 
 
@@ -131,3 +145,111 @@ def test_backtest_bounds_strategy_history() -> None:
     assert strategy.maximum_30m <= 256
     assert strategy.maximum_1h <= 256
     assert strategy.maximum_4h <= 256
+
+
+def test_long_signal_is_skipped_if_next_open_is_below_stop() -> None:
+    candles = [_candle(index) for index in range(20)]
+    candles[16] = _candle(
+        16,
+        open_=1.0985,
+        high=1.0992,
+        low=1.0980,
+        close=1.0988,
+    )
+
+    report = run_backtest(
+        symbol="EUR/USD",
+        candles_30m=tuple(candles),
+        strategy=OneShotStrategy(stop=1.0990),
+        config=BacktestConfig(round_trip_cost_pips=1.0),
+    )
+
+    assert report.signal_count == 1
+    assert report.invalidated_before_entry == 1
+    assert not report.trades
+
+
+def test_short_trade_is_symmetric() -> None:
+    candles = [_candle(index) for index in range(20)]
+    candles[16] = _candle(
+        16,
+        open_=1.1000,
+        high=1.1005,
+        low=1.0979,
+        close=1.0980,
+    )
+
+    report = run_backtest(
+        symbol="EUR/USD",
+        candles_30m=tuple(candles),
+        strategy=OneShotStrategy(side=Side.SHORT, stop=1.1010),
+        config=BacktestConfig(
+            round_trip_cost_pips=1.0,
+            minimum_cost_multiple=8.0,
+        ),
+    )
+
+    assert len(report.trades) == 1
+    trade = report.trades[0]
+    assert trade.gross_r == pytest.approx(2.0)
+    assert trade.net_r == pytest.approx(1.9)
+    assert trade.exit_reason == "target"
+
+
+def test_gap_through_open_stop_uses_worse_open_price() -> None:
+    candles = [_candle(index) for index in range(21)]
+    candles[16] = _candle(
+        16,
+        open_=1.1000,
+        high=1.1004,
+        low=1.0995,
+        close=1.1002,
+    )
+    candles[17] = _candle(
+        17,
+        open_=1.0980,
+        high=1.0985,
+        low=1.0975,
+        close=1.0982,
+    )
+
+    report = run_backtest(
+        symbol="EUR/USD",
+        candles_30m=tuple(candles),
+        strategy=OneShotStrategy(stop=1.0990),
+        config=BacktestConfig(
+            round_trip_cost_pips=1.0,
+            minimum_cost_multiple=8.0,
+        ),
+    )
+
+    assert len(report.trades) == 1
+    trade = report.trades[0]
+    assert trade.exit_reason == "stop_gap"
+    assert trade.exit == pytest.approx(1.0980)
+    assert trade.gross_r == pytest.approx(-2.0)
+
+
+def test_same_bar_stop_and_target_assumes_stop_first() -> None:
+    candles = [_candle(index) for index in range(20)]
+    candles[16] = _candle(
+        16,
+        open_=1.1000,
+        high=1.1025,
+        low=1.0985,
+        close=1.1000,
+    )
+
+    report = run_backtest(
+        symbol="EUR/USD",
+        candles_30m=tuple(candles),
+        strategy=OneShotStrategy(stop=1.0990),
+        config=BacktestConfig(
+            round_trip_cost_pips=1.0,
+            minimum_cost_multiple=8.0,
+        ),
+    )
+
+    assert len(report.trades) == 1
+    assert report.trades[0].exit_reason == "stop"
+    assert report.trades[0].gross_r == pytest.approx(-1.0)
