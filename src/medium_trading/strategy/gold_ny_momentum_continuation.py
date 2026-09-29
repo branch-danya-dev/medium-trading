@@ -1,4 +1,4 @@
-from datetime import time, timedelta
+from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from medium_trading.domain import Candle, Side, Signal, StrategyContext
@@ -116,7 +116,7 @@ class GoldNewYorkMomentumContinuationStrategy:
         candles: tuple[Candle, ...],
         *,
         session_date,
-    ) -> tuple[Side, float, float, float, object] | None:
+    ) -> tuple[Side, float, float, float, datetime] | None:
         by_time: dict[time, tuple[int, Candle]] = {}
         for index, candle in enumerate(candles):
             local = candle.timestamp.astimezone(_NEW_YORK)
