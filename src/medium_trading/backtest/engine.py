@@ -17,6 +17,9 @@ def pip_size(symbol: str) -> float:
     if normalized == "XAU/USD":
         # Gold research costs are modeled in 0.01 USD price increments.
         return 0.01
+    if normalized in {"BTC/USD", "ETH/USD"}:
+        # Dukascopy quotes BTC/USD and ETH/USD with a 1 USD pip value.
+        return 1.0
     quote_currency = normalized.split("/")[-1]
     return 0.01 if quote_currency == "JPY" else 0.0001
 
