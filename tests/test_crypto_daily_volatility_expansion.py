@@ -63,7 +63,7 @@ def test_long_first_close_beyond_reference_and_atr_extension() -> None:
             open_=100_300,
             high=100_700,
             low=100_250,
-            close=100_520,
+            close=100_560,
         ),
     )
 
@@ -82,7 +82,7 @@ def test_short_first_close_beyond_reference_and_atr_extension() -> None:
             open_=99_700,
             high=99_750,
             low=99_300,
-            close=99_480,
+            close=99_440,
         ),
     )
 
@@ -100,7 +100,7 @@ def test_close_inside_extension_does_not_signal() -> None:
             open_=100_300,
             high=100_550,
             low=100_250,
-            close=100_505,
+            close=100_530,
         ),
     )
 
@@ -114,7 +114,7 @@ def test_later_breakout_is_not_second_attempt() -> None:
             open_=100_300,
             high=100_700,
             low=100_250,
-            close=100_520,
+            close=100_560,
         ),
         _bar(
             datetime(2025, 7, 7, 4, 30, tzinfo=UTC),
