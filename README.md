@@ -8,8 +8,8 @@ The first version is intentionally small:
 
 - market: spot FX;
 - symbols: EUR/USD, GBP/USD, USD/JPY, AUD/USD;
-- decision timeframes: 4h regime, 1h setup, 30m trigger;
-- current strategy candidate: volatility breakout;
+- core data timeframes: 4h, 1h, 30m;
+- current strategy candidate: 4h time-series momentum;
 - starting equity model: USD 1,000;
 - default risk: 0.5% per trade, 1.0% maximum combined open risk;
 - decisions are made from closed candles, not tick/order-book noise.
@@ -111,25 +111,30 @@ OANDA v20 remains optional and is not required for the MVP.
 Trend Pullback has been rejected by the historical gate: it was negative before costs on out-of-sample
 data across all four MVP FX pairs. It remains available only for reproducibility.
 
-The current candidate is Volatility Breakout with parameters fixed before the first evaluation:
+Volatility Breakout has also been rejected by the historical gate: gross out-of-sample results were
+negative across all four MVP FX pairs.
 
-- 4h directional regime from the position of the last completed 4h close inside a 20-bar range;
-- 1h 20-bar Donchian breakout channel built only from bars known before the trigger candle;
-- 30m close beyond the channel with true-range expansion versus ATR14;
-- stop at 1.5 x ATR14 from the trigger close;
-- common 2R target and 24h maximum holding period from the existing backtest engine.
+The current candidate is 4H Time-Series Momentum with parameters fixed before the first evaluation:
+
+- direction is the sign of the 30-bar 4H price change;
+- decisions occur only when a new 4H candle closes;
+- ATR14 is measured on 4H candles;
+- stop is 2 x ATR14 from the signal close;
+- target is 3R;
+- maximum holding time is 240 M30 bars (5 days);
+- 1H and 30m are not used as entry triggers.
 
 ## Backtest
 
-    medium-trading backtest --strategy volatility-breakout --symbol EUR/USD --data data/EUR_USD_M30.csv --round-trip-cost-pips 1.2
+    medium-trading backtest --strategy time-series-momentum --symbol EUR/USD --data data/EUR_USD_M30.csv --round-trip-cost-pips 1.2
 
 Current simulation assumptions are deliberately conservative:
 
 - strategy sees closed candles only;
 - entry happens at the next M30 open;
-- target is 2R by default;
+- target and maximum holding time use strategy-specific defaults unless explicitly overridden;
+- current 4H momentum baseline uses 3R and 240 M30 bars (5 days);
 - stop is the structural stop emitted by the strategy;
-- maximum holding time is 48 M30 bars;
 - if stop and target are touched inside the same candle, stop is assumed first;
 - round-trip trading costs are deducted from every trade;
 - a setup is rejected if expected target movement is less than 8x modeled costs.
@@ -140,7 +145,7 @@ The evaluation command is the default strategy gate. It runs each pair through a
 60% train / 20% validation / 20% out-of-sample split and repeats the out-of-sample run at 2x costs.
 
     medium-trading evaluate ^
-      --strategy volatility-breakout ^
+      --strategy time-series-momentum ^
       --dataset EUR/USD=data/EUR_USD_M30.csv ^
       --dataset GBP/USD=data/GBP_USD_M30.csv ^
       --dataset USD/JPY=data/USD_JPY_M30.csv ^
@@ -149,7 +154,7 @@ The evaluation command is the default strategy gate. It runs each pair through a
       --cost GBP/USD=1.2 ^
       --cost USD/JPY=1.0 ^
       --cost AUD/USD=1.2 ^
-      --json artifacts/volatility_breakout_eval.json
+      --json artifacts/time_series_momentum_eval.json
 
 Validation and out-of-sample segments receive historical candles before their start only as indicator
 warmup. No trade may start in that warmup. The out-of-sample segment must not be used for parameter
