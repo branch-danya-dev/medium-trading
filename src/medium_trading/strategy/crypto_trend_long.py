@@ -1,6 +1,6 @@
 from dataclasses import replace
 
-from medium_trading.domain import Side, Signal, StrategyContext
+from medium_trading.domain import Candle, Side, Signal, StrategyContext
 
 
 class CryptoTrendLongStrategy:
@@ -100,7 +100,7 @@ class CryptoTrendLongV11Strategy(CryptoTrendLongStrategy):
         )
 
     @staticmethod
-    def _atr(candles: tuple, period: int) -> float:
+    def _atr(candles: tuple[Candle, ...], period: int) -> float:
         if len(candles) < period + 1:
             return 0.0
 
