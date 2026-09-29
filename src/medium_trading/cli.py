@@ -11,7 +11,11 @@ from medium_trading.config import Settings
 from medium_trading.data import import_dukascopy, load_candles, save_candles
 from medium_trading.data.dukascopy_download import download_m30
 from medium_trading.data.oanda import OandaHistoryClient
-from medium_trading.strategy import (\n    TimeSeriesMomentumStrategy,\n    TrendPullbackStrategy,\n    VolatilityBreakoutStrategy,\n)
+from medium_trading.strategy import (
+    TimeSeriesMomentumStrategy,
+    TrendPullbackStrategy,
+    VolatilityBreakoutStrategy,
+)
 from medium_trading.strategy.base import Strategy
 
 _STRATEGY_CHOICES = ("trend-pullback", "volatility-breakout", "time-series-momentum")
