@@ -2,7 +2,7 @@ from bisect import bisect_right
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from math import sqrt
-from typing import Iterable
+from collections.abc import Iterable
 
 from medium_trading.backtest.engine import aggregate_candles, run_backtest
 from medium_trading.backtest.model import BacktestConfig, BacktestTrade
@@ -111,7 +111,7 @@ def extract_mean_reversion_samples(
             continue
 
         four_hour_count = bisect_right(ends_4h, trade.entry_time)
-        history = candles_4h[:four_hour_count]
+        history = candles_4h[max(0, four_hour_count - 31) : four_hour_count]
         features = _features_for_trade(history, trade)
         if features is None:
             continue
@@ -137,7 +137,7 @@ def evaluate_mean_reversion_ml_filter(
     first_test_year: int = FIRST_TEST_YEAR,
     last_test_year: int = LAST_TEST_YEAR,
 ) -> WalkForwardEvaluation:
-    sklearn = _load_sklearn()
+    regressor = _load_regressor()
     all_samples = tuple(sorted(samples, key=lambda sample: sample.entry_time))
     if not all_samples:
         raise ValueError("ML evaluation requires at least one trade sample")
@@ -168,7 +168,7 @@ def evaluate_mean_reversion_ml_filter(
                 f"not enough pre-{year} training samples: {len(train)}; need at least 100"
             )
 
-        model = sklearn.HistGradientBoostingRegressor(**MODEL_PARAMS)
+        model = regressor(**MODEL_PARAMS)
         model.fit(
             [sample.features for sample in train],
             [sample.net_r for sample in train],
@@ -372,7 +372,7 @@ def _metrics(
     )
 
 
-def _load_sklearn():
+def _load_regressor():
     try:
         from sklearn.ensemble import HistGradientBoostingRegressor
     except ImportError as exc:  # pragma: no cover - exercised by installation path
@@ -380,8 +380,4 @@ def _load_sklearn():
             'ML research dependencies are not installed. Run pip install -e ".[ml]".'
         ) from exc
 
-    class Sklearn:
-        pass
-
-    Sklearn.HistGradientBoostingRegressor = HistGradientBoostingRegressor
-    return Sklearn
+    return HistGradientBoostingRegressor
