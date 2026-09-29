@@ -13,7 +13,7 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 - Legacy FX universe: EUR/USD, GBP/USD, USD/JPY, AUD/USD plus four external FX pairs used in validation.
 - Current market: Crypto, starting with BTC/USD.
 - Core data timeframe for the current candidate: 30m.
-- Current research candidate: Bybit BTCUSDT linear-perpetual Trend LONG v1.1 rerun on exchange-native M30 history.
+- Current research candidate: Bybit BTCUSDT Trend LONG v1.1 + ML noise-filter v0.1 feasibility test.
 - Default project starting equity model: USD 1,000. The BTC Trend LONG v1 diagnostic baseline uses USD 10,000 so R-to-USD interpretation is explicit.
 - Default risk: 0.5% of equity per trade.
 - Maximum combined open risk: 1.0% of equity.
@@ -148,6 +148,33 @@ The next data-source step is exchange-native Bybit history without changing the 
 - funding remains out of this specific rerun until the deterministic gross edge is established. If the strategy survives, add actual Bybit historical funding before any paper/live conclusion.
 
 Do not compare the new Bybit result to Dukascopy as though sample counts must match. The purpose is to remove the severe data-fragmentation bias and determine whether the deterministic LONG setup has gross edge on continuous exchange-native BTCUSDT history.
+
+The exchange-native Bybit BTCUSDT rerun produced 1,130 trades over 2023-2025. The deterministic LONG v1.1 stream was approximately flat before costs: gross +9.20R with gross PF 1.013, but realistic taker-fee plus slippage assumptions consumed 393.28R and made the net result deeply negative. About 77.8% of candidates reached +1R at some point within 24 hours, while many stopped trades later recovered. This establishes a useful diagnostic basis for a narrow ML noise-filter feasibility experiment; it does not establish profitability.
+
+The current frozen ML task is BTCUSDT LONG noise-filter v0.1. It must not revive the previously rejected Mean Reversion ML filter or Direct ML opportunity model. Its purpose is only to test whether a small causal model can distinguish immediate clean continuation from whipsaw/noise inside the already-frozen BTC LONG candidate stream.
+
+Noise-filter v0.1 is frozen as follows:
+- data: Bybit BTCUSDT linear-perpetual native M30, development years 2023-2025 only;
+- 2026 is untouched and must not be loaded, trained on, threshold-tuned on or evaluated during v0.1;
+- underlying trading strategy is unchanged: Trend LONG v1.1, same 4H EMA20 regime, M30 pullback/confirmation entry, ATR14 stop floor, 2R target, 24h wall-clock holding, 0.5% risk;
+- transaction-cost assumptions remain 5.5 bps fee per side plus 2.0 bps slippage per side;
+- candidate stream for v0.1 is the fixed executed deterministic v1.1 baseline stream. Rejecting a candidate does not introduce replacement candidates during this feasibility test; this isolates filter value and is not yet the final live execution policy;
+- deterministic economic gate is restored before ML using the project's old 8x expected-move/cost rule: 2R target distance / expected round-trip execution cost must be >=8, equivalent to expected cost <=0.25R. Economics are not an ML feature;
+- ML label is not trade WIN/LOSS and not net R;
+- CLEAN = +1R is reached before the stop and within 8 hours of entry;
+- WHIPSAW = stop is touched before +1R, but +1R is later reached inside the full 24-hour label horizon;
+- NOISE = all remaining cases, including no +1R within 24 hours or continuation too slow to qualify as CLEAN;
+- binary training target is CLEAN versus not-CLEAN; WHIPSAW/NOISE are retained separately for diagnostics;
+- conservative same-bar labeling gives adverse/stop touch priority when both thresholds are present in one M30 candle;
+- features are causal and known by entry: 1/2/4/8-bar returns in ATR, ATR/price, ATR14/ATR50, 8-bar efficiency and bullish ratio, confirmation and pullback body/range in ATR, relative volume, stop distance in ATR, and 4H EMA20 distance/slope in 4H ATR;
+- model type: HistGradientBoostingClassifier;
+- model params: learning_rate=0.05, max_iter=120, max_leaf_nodes=7, min_samples_leaf=20, l2_regularization=1.0, early_stopping=False, random_state=42;
+- probability threshold is fixed at 0.50. There is no threshold search or tuning in v0.1;
+- walk-forward tests are calendar 2024 and 2025. 2023 is training-only because the current Bybit file starts in 2023. For each fold, a training label is usable only when its full 24-hour label horizon is known before the test year begins;
+- compare three layers on the same test candidate stream: raw baseline, economic-gate only, economic-gate + ML;
+- report ordinary and 2x-cost trade metrics, clean precision/recall, class distribution and each yearly fold.
+
+v0.1 is a feasibility test, not an optimization pass. Do not tune features, probability threshold, label horizon, CLEAN definition, economic gate or model hyperparameters after seeing the first v0.1 result. First determine whether the fixed model has useful out-of-sample discrimination at all.
 
 Daily Income Gate is frozen before the first result. A strategy passes only if all conditions hold across the combined fixed test years:
 - at least 250 eligible session days;
