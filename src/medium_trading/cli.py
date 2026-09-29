@@ -12,13 +12,19 @@ from medium_trading.data import import_dukascopy, load_candles, save_candles
 from medium_trading.data.dukascopy_download import download_m30
 from medium_trading.data.oanda import OandaHistoryClient
 from medium_trading.strategy import (
+    MeanReversionStrategy,
     TimeSeriesMomentumStrategy,
     TrendPullbackStrategy,
     VolatilityBreakoutStrategy,
 )
 from medium_trading.strategy.base import Strategy
 
-_STRATEGY_CHOICES = ("trend-pullback", "volatility-breakout", "time-series-momentum")
+_STRATEGY_CHOICES = (
+    "trend-pullback",
+    "volatility-breakout",
+    "time-series-momentum",
+    "mean-reversion",
+)
 
 
 def main() -> None:
@@ -55,7 +61,7 @@ def main() -> None:
     backtest.add_argument(
         "--strategy",
         choices=_STRATEGY_CHOICES,
-        default="time-series-momentum",
+        default="mean-reversion",
     )
     backtest.add_argument("--round-trip-cost-pips", type=float, default=1.2)
     backtest.add_argument("--cost-stress", type=float, default=1.0)
@@ -79,7 +85,7 @@ def main() -> None:
     evaluate.add_argument(
         "--strategy",
         choices=_STRATEGY_CHOICES,
-        default="time-series-momentum",
+        default="mean-reversion",
     )
     evaluate.add_argument("--default-cost-pips", type=float, default=1.2)
     evaluate.add_argument("--risk", type=float, default=0.005)
@@ -242,12 +248,16 @@ def _strategy_from_name(name: str) -> Strategy:
         return VolatilityBreakoutStrategy()
     if name == "time-series-momentum":
         return TimeSeriesMomentumStrategy()
+    if name == "mean-reversion":
+        return MeanReversionStrategy()
     raise ValueError(f"unsupported strategy: {name}")
 
 
 def _strategy_backtest_defaults(name: str) -> tuple[float, int]:
     if name == "time-series-momentum":
         return 3.0, 240
+    if name == "mean-reversion":
+        return 2.0, 192
     return 2.0, 48
 
 
