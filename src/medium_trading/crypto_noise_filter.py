@@ -473,7 +473,7 @@ def _features_for_entry(
     )
 
     four_hour_count = bisect_right(ends_4h, trade.entry_time)
-    four_hour_history = candles_4h[max(0, four_hour_count - 24) : four_hour_count]
+    four_hour_history = candles_4h[:four_hour_count]
     if len(four_hour_history) < 21:
         return None
 
@@ -595,15 +595,21 @@ def _classification_metrics(
     if len(truth) != len(predicted):
         raise ValueError("classification arrays must have equal length")
 
-    true_positive = sum(actual and guess for actual, guess in zip(truth, predicted))
+    true_positive = sum(
+        actual and guess
+        for actual, guess in zip(truth, predicted, strict=True)
+    )
     false_positive = sum(
-        not actual and guess for actual, guess in zip(truth, predicted)
+        not actual and guess
+        for actual, guess in zip(truth, predicted, strict=True)
     )
     false_negative = sum(
-        actual and not guess for actual, guess in zip(truth, predicted)
+        actual and not guess
+        for actual, guess in zip(truth, predicted, strict=True)
     )
     true_negative = sum(
-        not actual and not guess for actual, guess in zip(truth, predicted)
+        not actual and not guess
+        for actual, guess in zip(truth, predicted, strict=True)
     )
 
     return ClassificationMetrics(
