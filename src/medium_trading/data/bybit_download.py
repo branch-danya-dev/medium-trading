@@ -5,6 +5,7 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from itertools import pairwise
 from typing import Callable, Mapping, Sequence
 
 from medium_trading.domain import Candle
@@ -283,7 +284,7 @@ def _validate_complete_range(
             f"expected {expected_last.isoformat()}"
         )
 
-    for previous, current in zip(candles, candles[1:], strict=False):
+    for previous, current in pairwise(candles):
         if current.timestamp - previous.timestamp != _INTERVAL_DELTA:
             raise BybitDownloadError(
                 "Bybit M30 history contains a gap between "
