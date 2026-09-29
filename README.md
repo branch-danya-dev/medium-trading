@@ -9,7 +9,7 @@ The first version is intentionally small:
 - research markets are tested separately rather than forcing one universal strategy;
 - legacy FX research remains reproducible;
 - current market: Crypto, starting with BTC/USD;
-- current candidate: frozen BTC/USD Trend LONG v1 diagnostic baseline;
+- current candidate: frozen BTC/USD Trend LONG v1.1 stop-width diagnostic;
 - daily-income consistency is now a primary evaluation target;
 - starting equity model: USD 1,000;
 - default risk: 0.5% per trade, 1.0% maximum combined open risk;
@@ -509,32 +509,33 @@ Run the frozen 2023-2025 momentum-continuation baseline:
 
 That mixed-direction momentum-continuation baseline failed and is rejected.
 
-Research now restarts with one narrow basket: BTC/USD LONG only. BTC Trend LONG v1 uses completed 4H bars
-for regime context and M30 for execution. The latest 4H close must be above EMA20 and EMA20 must be above
-its value three completed 4H bars earlier. A bearish M30 pullback followed immediately by a bullish M30
-close above the pullback high creates a LONG signal. Entry is next M30 open, stop is the pullback low,
-target is 2.0R and maximum holding is 24 hours.
+Research then narrowed to BTC/USD LONG only. Trend LONG v1 used completed 4H bars for regime context
+and M30 for execution: latest 4H close above EMA20, EMA20 rising versus three completed 4H bars earlier,
+one bearish M30 pullback, then a bullish M30 close above the pullback high. Entry was the next M30 open,
+stop the pullback low, target 2.0R, maximum holding 48 M30 bars, no ML and no noise filter.
 
-This baseline has no ML and no noise filter. The historical diagnostic intentionally disables the old 8x
-expected-move cost gate so small/noisy setups remain visible, while the frozen USD 50 round-trip modeled
-cost is still deducted from every trade. Starting equity is USD 10,000 and risk is 0.5% per trade.
+The first diagnostic produced a weakly positive raw stream before costs: 1,092 trades, +47.13R gross and
+gross PF 1.067. But the pullback-low stop was often very tight: modeled USD 50 costs consumed 284.56R,
+net result was -237.42R, and 425 stopped trades later recovered to at least +1R from the original entry
+inside the diagnostic horizon. This points to stop/execution width before ML filtering.
 
-Run the fixed 2023-2025 BTC LONG diagnostic:
+BTC Trend LONG v1.1 changes only the stop. The resolved LONG stop is the lower of the pullback low or the
+actual next-open entry minus 1.0 x M30 ATR14. Trend regime, pullback/confirmation entry, 2.0R target,
+48-bar holding limit, USD 50 modeled cost, 0.5% risk, USD 10,000 starting equity and disabled ML/noise
+filter remain unchanged. The old 8x expected-move cost gate remains disabled for diagnostic visibility.
 
-    medium-trading btc-long-evaluate ^
+Run v1.1:
+
+    medium-trading btc-long-v1-1-evaluate ^
       --data data/crypto/BTC_USD_M30.csv ^
       --cost-usd 50 ^
       --starting-equity 10000 ^
       --risk 0.005 ^
-      --json artifacts/btc_trend_long_v1.json
+      --json artifacts/btc_trend_long_v1_1.json
 
-The JSON includes every trade plus 24-hour MFE/MAE, post-exit favorable movement and +0.5R/+1R/+2R/+3R
-reach diagnostics. This baseline is not judged by the old Daily Income Gate. A small net loss can remain
-research-worthy when the gross LONG stream is positive and diagnostics identify a repeatable noise/cost
-problem. Negative gross expectancy across the inspected folds is evidence against adding ML as a rescue.
-
-Do not tune EMA20, the three-4H-bar EMA slope comparison, M30 pullback/confirmation rule, 2.0R target,
-24-hour holding period or USD 50 modeled cost after reading the first result.
+The v1.1 JSON adds MFE/MAE up to exit, post-stop MFE, time from a stop to later +1R/+2R, ATR14 at entry,
+stop distance in ATR and cost in R. Compare v1.1 directly with v1 before changing any other parameter or
+adding ML.
 
 The legacy daily gate remains strict and conjunctive for the older daily-income studies: at least 250 eligible sessions, at least 300 trades, >=70%
 active-session rate, >=45% profitable active days, positive average net R/session, net PF >=1.15,
