@@ -1,13 +1,15 @@
 import argparse
 import json
 import os
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 from medium_trading.backtest.engine import pip_size, run_backtest
 from medium_trading.backtest.model import BacktestConfig, BacktestReport
 from medium_trading.backtest.validation import SymbolEvaluation, evaluate_symbol
+from medium_trading.config import Settings
 from medium_trading.data import import_dukascopy, load_candles, save_candles
+from medium_trading.data.dukascopy_download import download_m30
 from medium_trading.data.oanda import OandaHistoryClient
 from medium_trading.strategy import TrendPullbackStrategy
 
@@ -16,10 +18,23 @@ def main() -> None:
     parser = argparse.ArgumentParser(prog="medium-trading")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    dukascopy = subparsers.add_parser("import-dukascopy")
-    dukascopy.add_argument("--symbol", required=True, help="Example: EUR/USD")
-    dukascopy.add_argument("--input", required=True)
-    dukascopy.add_argument("--output", required=True)
+    dukascopy_download = subparsers.add_parser("download-dukascopy")
+    dukascopy_download.add_argument(
+        "--symbol",
+        action="append",
+        dest="symbols",
+        help="Repeatable. Defaults to the four MVP FX pairs.",
+    )
+    dukascopy_download.add_argument("--from", dest="start", required=True)
+    dukascopy_download.add_argument("--to", dest="end", required=True)
+    dukascopy_download.add_argument("--side", choices=("BID", "ASK"), default="BID")
+    dukascopy_download.add_argument("--workers", type=int, default=4)
+    dukascopy_download.add_argument("--output-dir", default="data")
+
+    dukascopy_import = subparsers.add_parser("import-dukascopy")
+    dukascopy_import.add_argument("--symbol", required=True, help="Example: EUR/USD")
+    dukascopy_import.add_argument("--input", required=True)
+    dukascopy_import.add_argument("--output", required=True)
 
     download = subparsers.add_parser("download-oanda")
     download.add_argument("--instrument", required=True, help="Example: EUR_USD")
@@ -56,7 +71,9 @@ def main() -> None:
     evaluate.add_argument("--json", dest="json_output")
 
     args = parser.parse_args()
-    if args.command == "import-dukascopy":
+    if args.command == "download-dukascopy":
+        _download_dukascopy(args)
+    elif args.command == "import-dukascopy":
         _import_dukascopy(args)
     elif args.command == "download-oanda":
         _download_oanda(args)
@@ -64,6 +81,36 @@ def main() -> None:
         _backtest(args)
     elif args.command == "evaluate":
         _evaluate(args)
+
+
+def _download_dukascopy(args: argparse.Namespace) -> None:
+    start = date.fromisoformat(args.start)
+    end = date.fromisoformat(args.end)
+    symbols = tuple(args.symbols or Settings().symbols)
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    for symbol in symbols:
+        print(f"downloading {symbol}: {start} -> {end} ({args.side})")
+
+        def progress(done: int, total: int) -> None:
+            if done == total or done % 100 == 0:
+                print(f"  {done}/{total} days")
+
+        result = download_m30(
+            symbol=symbol,
+            start=start,
+            end=end,
+            side=args.side,
+            workers=args.workers,
+            progress=progress,
+        )
+        output = output_dir / f"{symbol.replace('/', '_')}_M30.csv"
+        save_candles(output, result.candles)
+        print(
+            f"saved {len(result.candles)} M30 candles to {output} "
+            f"({result.data_days} data days, {result.empty_days} empty days)"
+        )
 
 
 def _import_dukascopy(args: argparse.Namespace) -> None:
