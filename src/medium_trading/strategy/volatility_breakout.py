@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from datetime import timedelta
 
 from medium_trading.domain import Candle, Side, Signal, StrategyContext
 
@@ -35,24 +36,38 @@ class VolatilityBreakoutStrategy:
     stop_atr_multiple = 1.5
 
     def evaluate(self, context: StrategyContext) -> Signal | None:
-        if len(context.candles_4h) < self.channel_period:
-            return None
-        if len(context.candles_1h) < self.channel_period:
-            return None
         if len(context.candles_30m) < self.atr_period + 2:
             return None
 
-        regime_4h = context.candles_4h[-self.channel_period :]
+        last_30m = context.candles_30m[-1]
+        trigger_start = last_30m.timestamp
+
+        prior_4h = tuple(
+            candle
+            for candle in context.candles_4h
+            if candle.timestamp + timedelta(hours=4) <= trigger_start
+        )
+        prior_1h = tuple(
+            candle
+            for candle in context.candles_1h
+            if candle.timestamp + timedelta(hours=1) <= trigger_start
+        )
+
+        if len(prior_4h) < self.channel_period:
+            return None
+        if len(prior_1h) < self.channel_period:
+            return None
+
+        regime_4h = prior_4h[-self.channel_period :]
         high_4h = max(candle.high for candle in regime_4h)
         low_4h = min(candle.low for candle in regime_4h)
         midpoint_4h = (high_4h + low_4h) / 2.0
         last_4h = regime_4h[-1]
 
-        channel_1h = context.candles_1h[-self.channel_period :]
+        channel_1h = prior_1h[-self.channel_period :]
         upper = max(candle.high for candle in channel_1h)
         lower = min(candle.low for candle in channel_1h)
 
-        last_30m = context.candles_30m[-1]
         previous_30m = context.candles_30m[-2]
         atr_30m = _atr(context.candles_30m, self.atr_period)
         trigger_range = _true_range(last_30m, previous_30m.close)
