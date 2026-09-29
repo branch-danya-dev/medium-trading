@@ -8,8 +8,8 @@ The first version is intentionally small:
 
 - research markets are tested separately rather than forcing one universal strategy;
 - legacy FX research remains reproducible;
-- current market: Gold / XAU/USD;
-- current candidate: frozen XAU/USD New York opening exhaustion / reversal;
+- current market: Crypto, starting with BTC/USD;
+- current candidate: frozen BTC/USD UTC Daily Volatility Expansion;
 - daily-income consistency is now a primary evaluation target;
 - starting equity model: USD 1,000;
 - default risk: 0.5% per trade, 1.0% maximum combined open risk;
@@ -91,7 +91,7 @@ The downloader:
 - requests Dukascopy minute BID candles by UTC calendar date;
 - downloads up to four days concurrently by default;
 - retries transient HTTP errors;
-- skips Saturdays but keeps Sundays because FX can reopen late Sunday UTC;
+- skips Saturdays for non-crypto symbols but keeps all seven UTC days for BTC/USD and ETH/USD;
 - converts one-minute source candles into complete M30 bars;
 - refuses to silently save a dataset when a requested day still fails after retries;
 - prints progress every 100 completed dates.
@@ -453,9 +453,40 @@ Run the frozen 2023-2025 exhaustion-reversal baseline with the existing gold dat
       --cost XAU/USD=80 ^
       --json artifacts/gold_ny_exhaustion_reversal_daily_eval.json
 
-Do not tune the 0.75 ATR threshold, 50% reversal band, 1.25R target, 2-hour holding period or 80-pip
-cost after reading the result. This is a separate gold hypothesis and receives at most one materially
-justified modification only if the baseline is close but fails.
+That exhaustion-reversal baseline also failed. Across the three inspected gold hypotheses, none delivered
+the required activity, profitability and cost robustness, so gold is closed for this research cycle.
+
+The next market is crypto, starting with BTC/USD. Daily accounting is by UTC calendar day. The first
+frozen hypothesis builds a 00:00-04:00 UTC reference range from eight M30 bars and then takes only the
+first qualifying close through 18:00 UTC. A LONG close must extend at least 0.10 ATR14 above the reference
+high; a SHORT close must extend at least 0.10 ATR14 below the reference low. Entry is the next M30 open,
+stop is the reference midpoint, target is 1.5R, maximum holding is 8 M30 bars (4 hours), and there is at
+most one attempt per UTC day.
+
+BTC/USD and ETH/USD use a 1 USD research pip. The frozen BTC/USD ordinary round-trip cost is 50 USD price
+points and the 2x stress is 100 USD. The 50 USD value is a conservative research assumption rather than
+a broker spread quote.
+
+Download BTC/USD history. Crypto downloads include Saturdays:
+
+    medium-trading download-dukascopy ^
+      --symbol BTC/USD ^
+      --from 2020-01-01 ^
+      --to 2025-12-31 ^
+      --workers 4 ^
+      --output-dir data/crypto
+
+Run the frozen 2023-2025 BTC daily-income baseline:
+
+    medium-trading daily-evaluate ^
+      --strategy crypto-daily-volatility-expansion ^
+      --dataset BTC/USD=data/crypto/BTC_USD_M30.csv ^
+      --cost BTC/USD=50 ^
+      --json artifacts/btc_daily_volatility_expansion_eval.json
+
+Do not tune the 00:00-04:00 UTC reference range, 0.10 ATR extension, midpoint stop, 1.5R target, 4-hour
+holding period, 18:00 cutoff or 50 USD cost after reading the result. The strategy is evaluated by UTC
+calendar day using the same Daily Income Gate.
 
 The daily gate is strict and conjunctive: at least 250 eligible sessions, at least 300 trades, >=70%
 active-session rate, >=45% profitable active days, positive average net R/session, net PF >=1.15,
