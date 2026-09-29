@@ -36,6 +36,7 @@ from medium_trading.ml_filter import (
 from medium_trading.ml_filter import evaluation_payload as ml_evaluation_payload
 from medium_trading.ml_filter import forward_evaluation_payload as ml_forward_payload
 from medium_trading.strategy import (
+    GoldLondonNewYorkBreakoutStrategy,
     MeanReversionStrategy,
     OpeningRangeBreakoutQualityStrategy,
     OpeningRangeBreakoutStrategy,
@@ -52,6 +53,7 @@ _STRATEGY_CHOICES = (
     "mean-reversion",
     "opening-range-breakout",
     "opening-range-breakout-quality",
+    "gold-london-ny-breakout",
 )
 
 
@@ -240,7 +242,11 @@ def main() -> None:
     )
     daily_evaluate.add_argument(
         "--strategy",
-        choices=("opening-range-breakout", "opening-range-breakout-quality"),
+        choices=(
+            "opening-range-breakout",
+            "opening-range-breakout-quality",
+            "gold-london-ny-breakout",
+        ),
         default="opening-range-breakout",
     )
     daily_evaluate.add_argument("--default-cost", type=float, default=1.0)
@@ -688,6 +694,8 @@ def _strategy_from_name(name: str) -> Strategy:
         return OpeningRangeBreakoutStrategy()
     if name == "opening-range-breakout-quality":
         return OpeningRangeBreakoutQualityStrategy()
+    if name == "gold-london-ny-breakout":
+        return GoldLondonNewYorkBreakoutStrategy()
     raise ValueError(f"unsupported strategy: {name}")
 
 
@@ -696,7 +704,11 @@ def _strategy_backtest_defaults(name: str) -> tuple[float, int]:
         return 3.0, 240
     if name == "mean-reversion":
         return 2.0, 192
-    if name in {"opening-range-breakout", "opening-range-breakout-quality"}:
+    if name in {
+        "opening-range-breakout",
+        "opening-range-breakout-quality",
+        "gold-london-ny-breakout",
+    }:
         return 1.5, 6
     return 2.0, 48
 
