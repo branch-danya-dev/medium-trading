@@ -116,3 +116,25 @@ def test_ml_forward_parser_uses_separate_train_and_forward_data(monkeypatch) -> 
     assert args.trade_start == "2026-01-02"
     assert args.trade_end == "2026-09-18"
     assert args.default_cost_pips == 1.2
+
+
+def test_direct_ml_parser_uses_frozen_research_command(monkeypatch) -> None:
+    captured = []
+
+    monkeypatch.setattr(cli, "_direct_ml_evaluate", captured.append)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "medium-trading",
+            "direct-ml-evaluate",
+            "--dataset",
+            "EUR/USD=data/EUR_USD_M30.csv",
+        ],
+    )
+
+    cli.main()
+
+    args = captured[0]
+    assert args.default_cost_pips == 1.2
+    assert args.risk == 0.005
