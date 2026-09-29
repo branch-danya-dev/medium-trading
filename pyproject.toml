@@ -7,7 +7,9 @@ name = "medium-trading"
 version = "0.1.0"
 description = "Compact medium-frequency systematic trading bot"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "tzdata>=2025.2",
+]
 
 [project.optional-dependencies]
 ml = [
