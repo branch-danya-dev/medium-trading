@@ -167,6 +167,46 @@ Validation and out-of-sample segments receive historical candles before their st
 warmup. No trade may start in that warmup. The out-of-sample segment must not be used for parameter
 tuning.
 
+## Temporal forward holdout
+
+After the initial and cross-instrument Mean Reversion evaluations, the strategy parameters remain frozen.
+The next gate uses fresh 2026 data across all eight researched FX pairs.
+
+Download a dedicated dataset with December 2025 warmup and enough post-window data for the four-day
+maximum holding horizon:
+
+    medium-trading download-dukascopy ^
+      --symbol EUR/USD --symbol GBP/USD --symbol USD/JPY --symbol AUD/USD ^
+      --symbol USD/CAD --symbol NZD/USD --symbol EUR/GBP --symbol EUR/JPY ^
+      --from 2025-12-01 ^
+      --to 2026-09-28 ^
+      --workers 4 ^
+      --output-dir data/forward_2026
+
+Only entries from 2026-01-02 through 2026-09-18 are counted. Candles before the start are warmup only;
+candles after the end exist only so open trades can finish normally.
+
+    medium-trading forward-evaluate ^
+      --strategy mean-reversion ^
+      --trade-start 2026-01-02 ^
+      --trade-end 2026-09-18 ^
+      --dataset EUR/USD=data/forward_2026/EUR_USD_M30.csv ^
+      --dataset GBP/USD=data/forward_2026/GBP_USD_M30.csv ^
+      --dataset USD/JPY=data/forward_2026/USD_JPY_M30.csv ^
+      --dataset AUD/USD=data/forward_2026/AUD_USD_M30.csv ^
+      --dataset USD/CAD=data/forward_2026/USD_CAD_M30.csv ^
+      --dataset NZD/USD=data/forward_2026/NZD_USD_M30.csv ^
+      --dataset EUR/GBP=data/forward_2026/EUR_GBP_M30.csv ^
+      --dataset EUR/JPY=data/forward_2026/EUR_JPY_M30.csv ^
+      --cost EUR/USD=1.0 --cost GBP/USD=1.2 ^
+      --cost USD/JPY=1.0 --cost AUD/USD=1.2 ^
+      --cost USD/CAD=1.5 --cost NZD/USD=1.5 ^
+      --cost EUR/GBP=1.5 --cost EUR/JPY=1.5 ^
+      --json artifacts/mean_reversion_forward_2026.json
+
+The command reports the frozen forward window at ordinary modeled costs and at 2x costs without a new
+train/validation/OOS split.
+
 ## Status
 
 Automatic Dukascopy date-range download, manual CSV import, and historical multi-pair evaluation are
