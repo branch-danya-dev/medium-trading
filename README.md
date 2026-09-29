@@ -9,7 +9,7 @@ The first version is intentionally small:
 - research markets are tested separately rather than forcing one universal strategy;
 - legacy FX research remains reproducible;
 - current market: Crypto, starting with BTC/USD;
-- current candidate: frozen BTC/USD UTC Daily Volatility Expansion;
+- current candidate: frozen BTC/USD rolling intraday momentum continuation;
 - daily-income consistency is now a primary evaluation target;
 - starting equity model: USD 1,000;
 - default risk: 0.5% per trade, 1.0% maximum combined open risk;
@@ -484,9 +484,31 @@ Run the frozen 2023-2025 BTC daily-income baseline:
       --cost BTC/USD=50 ^
       --json artifacts/btc_daily_volatility_expansion_eval.json
 
-Do not tune the 00:00-04:00 UTC reference range, 0.10 ATR extension, midpoint stop, 1.5R target, 4-hour
-holding period, 18:00 cutoff or 50 USD cost after reading the result. The strategy is evaluated by UTC
-calendar day using the same Daily Income Gate.
+That fixed-range volatility-expansion baseline failed and is rejected.
+
+The BTC/USD history is not uniformly complete across the inspected years. Crypto daily evaluation
+therefore treats a UTC day as eligible only when it contains at least 40 of the possible 48 M30 bars.
+No missing candles are synthesized. Rolling-momentum setups also require exact 30-minute continuity in
+their recent input window.
+
+The next frozen BTC hypothesis is rolling intraday momentum continuation, with no fixed early-day
+reference range. It looks for an eight-bar (4-hour) directional move of at least 0.75 ATR14, requires at
+least five of those eight candle bodies to agree with the direction, then waits for one shallow
+counter-direction M30 pullback that does not cross the 50% trend midpoint. The immediately following
+M30 candle must resume through the pullback boundary. Decisions are allowed from 02:00 through 22:00 UTC.
+Entry is the next M30 open, stop is the pullback extreme, target is 1.5R, maximum holding is 8 M30 bars
+(4 hours), and there is at most one attempt per UTC day.
+
+Run the frozen 2023-2025 momentum-continuation baseline:
+
+    medium-trading daily-evaluate ^
+      --strategy crypto-intraday-momentum-continuation ^
+      --dataset BTC/USD=data/crypto/BTC_USD_M30.csv ^
+      --cost BTC/USD=50 ^
+      --json artifacts/btc_intraday_momentum_continuation_eval.json
+
+Do not tune the 4-hour trend window, 0.75 ATR threshold, 5-of-8 directional rule, 50% retracement limit,
+02:00-22:00 decision window, 1.5R target, 4-hour holding period or 50 USD cost after reading the result.
 
 The daily gate is strict and conjunctive: at least 250 eligible sessions, at least 300 trades, >=70%
 active-session rate, >=45% profitable active days, positive average net R/session, net PF >=1.15,
