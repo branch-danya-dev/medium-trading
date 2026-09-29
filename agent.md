@@ -17,7 +17,8 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 - Default risk: 0.5% of equity per trade.
 - Maximum combined open risk: 1.0% of equity.
 - Strategy decisions use closed candles.
-- Dukascopy CSV export is the primary historical-data path; it requires no trading account.
+- Automatic Dukascopy minute-candle download is the primary historical-data path.
+- Manual Dukascopy CSV import is a fallback.
 - OANDA v20 remains optional and must not become an MVP dependency.
 - One broker integration only when live execution is implemented.
 
@@ -53,6 +54,16 @@ Do not add these without a concrete, measured need and a task that explicitly re
 
 SQLite is acceptable later if persistence is needed. Flat CSV/Parquet is acceptable for historical data.
 
+## Historical-data correctness
+
+- Historical downloader failures must be visible; never silently continue with failed requested days.
+- Do not synthesize missing minute candles.
+- Aggregate M30 only from complete 30-minute source buckets.
+- Use UTC throughout historical-data processing.
+- Keep generated data files out of Git.
+- Do not increase Dukascopy downloader concurrency aggressively without measuring rate limits.
+- BID is the default research price stream while spread/slippage remains modeled separately.
+
 ## Trading correctness
 
 Every strategy change must answer:
@@ -84,8 +95,8 @@ Before changing code:
 
 Before finishing:
 
-1. Run `ruff check .`.
-2. Run `pytest`.
+1. Run ruff check .
+2. Run pytest.
 3. Add or update tests for changed behavior.
 4. Document any changed trading assumption.
 5. Report what is implemented, what was tested and what remains unproven.
