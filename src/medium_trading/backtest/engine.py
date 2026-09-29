@@ -1,4 +1,5 @@
 from bisect import bisect_right
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 from medium_trading.domain import Candle, Side, Signal, StrategyContext
@@ -112,6 +113,7 @@ def run_backtest(
         signal_count += 1
         entry_index = index + 1
         entry = candles_30m[entry_index].open
+        signal = _resolve_entry_relative_stop(signal, entry)
 
         if not _entry_has_valid_stop(signal, entry):
             invalidated_before_entry += 1
@@ -201,6 +203,20 @@ def run_backtest(
 def _tail(candles: tuple[Candle, ...], end: int) -> tuple[Candle, ...]:
     start = max(0, end - _CONTEXT_WINDOW)
     return candles[start:end]
+
+
+def _resolve_entry_relative_stop(signal: Signal, entry: float) -> Signal:
+    distance = signal.minimum_stop_distance
+    if distance is None:
+        return signal
+    if distance <= 0:
+        raise ValueError("minimum_stop_distance must be positive when provided")
+
+    if signal.side is Side.LONG:
+        stop = min(signal.stop, entry - distance)
+    else:
+        stop = max(signal.stop, entry + distance)
+    return replace(signal, stop=stop)
 
 
 def _entry_has_valid_stop(signal: Signal, entry: float) -> bool:
