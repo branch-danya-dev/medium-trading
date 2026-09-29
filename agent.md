@@ -12,7 +12,7 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 - Market: spot FX.
 - Symbols: EUR/USD, GBP/USD, USD/JPY, AUD/USD.
 - Core data timeframes: 4h, 1h, 30m.
-- Current research candidate: frozen ML filter over 4H Mean Reversion entries.
+- Current research candidate: frozen direct 4H ML opportunity model.
 - Starting equity model: USD 1,000.
 - Default risk: 0.5% of equity per trade.
 - Maximum combined open risk: 1.0% of equity.
@@ -30,11 +30,15 @@ Volatility Breakout has been evaluated and is REJECTED: it was negative before c
 
 4H Mean Reversion / Range Trading has been evaluated and is REJECTED as a universal FX strategy. Its first four-pair OOS was positive overall, but the external four-pair holdout was negative overall and the frozen 2026 temporal forward test was negative overall across eight pairs. Its parameters remain locked for reproducibility.
 
-The current research task is a frozen ML filter over the existing Mean Reversion trade stream. It is not a new autonomous trading strategy. The first baseline uses HistGradientBoostingRegressor with fixed parameters: learning_rate=0.05, max_iter=100, max_leaf_nodes=7, min_samples_leaf=20, l2_regularization=1.0, early_stopping=False, random_state=42. It predicts realized net R and accepts an existing Mean Reversion trade only when predicted net R is above 0.0R.
+The first frozen ML filter over Mean Reversion entries was useful diagnostically but did not make the 2026 forward period profitable: it reduced the loss materially while remaining negative. Do not tune that filter further on the inspected periods.
 
-The fixed features are: side, absolute z-score, 30-bar efficiency ratio, ATR/price, target distance in ATR, reward/risk at actual entry, modeled cost in R, 1/3/6-bar 4H returns in ATR, 10-bar range in ATR, and current 4H candle body in ATR. Symbol identity is deliberately excluded. Do not add features, tune model hyperparameters, change the threshold, or select pairs based on the first ML results.
+The current research task is a frozen direct 4H ML opportunity model. It evaluates every completed 4H state rather than requiring a Mean Reversion setup. Two independent HistGradientBoostingRegressor models predict realized net R for a fixed LONG candidate and a fixed SHORT candidate. The higher prediction is traded only when it is above 0.0R; otherwise the decision is NO TRADE.
 
-Historical ML evaluation is expanding-window walk-forward with calendar-year test folds 2023, 2024 and 2025. A training label is usable only if the trade exited before the next test year begins. The already-inspected 2026 period is not a pristine final holdout for ML; it may be used only as a frozen diagnostic forward check with no changes to features, model parameters, threshold, strategy rules, costs or pair selection. Final confirmation still requires later unseen data or paper-forward observation.
+Direct-ML execution is fixed before the first historical evaluation: entry at the next M30 open, stop at 1.5 ATR14, target at 2.0 ATR14, maximum holding of 48 M30 bars (24 hours), the existing 8x cost gate, conservative same-bar stop priority, and the same modeled FX transaction costs.
+
+Direct-ML model parameters are fixed: learning_rate=0.05, max_iter=120, max_leaf_nodes=7, min_samples_leaf=30, l2_regularization=1.0, early_stopping=False, random_state=42. The fixed features are 1/3/6/12/30-bar 4H returns in ATR, 20/50-bar z-scores, 10/30-bar efficiency ratios, ATR/price, ATR14/ATR50, 10/30-bar ranges in ATR, current 4H candle body and range in ATR, and position inside the 20-bar range. Symbol identity is deliberately excluded.
+
+Historical direct-ML evaluation is expanding-window walk-forward with calendar-year test folds 2023, 2024 and 2025. A training opportunity is usable only if both hypothetical LONG and SHORT outcomes were fully known before the test year begins. Do not add features, tune model hyperparameters, change the threshold, execution template, cost gate or pair selection after reading the first direct-ML results. The already-inspected 2026 period may only be used later as a frozen diagnostic check; final confirmation requires later unseen data or paper-forward observation.
 
 ## Architecture rules
 
