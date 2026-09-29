@@ -13,7 +13,7 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 - Legacy FX universe: EUR/USD, GBP/USD, USD/JPY, AUD/USD plus four external FX pairs used in validation.
 - Current market: Gold / XAU/USD.
 - Core data timeframe for the current candidate: 30m.
-- Current research candidate: frozen London-reference to New York breakout.
+- Current research candidate: frozen New York momentum continuation on XAU/USD.
 - Starting equity model: USD 1,000.
 - Default risk: 0.5% of equity per trade.
 - Maximum combined open risk: 1.0% of equity.
@@ -63,22 +63,28 @@ Exactly one final USATECH modification is allowed. It keeps the same opening ran
 
 The final USATECH quality-filter variant failed the Daily Income Gate. US-index ORB is REJECTED and CLOSED. Do not tune or revive its threshold, target, stop, holding period or costs on the inspected datasets.
 
-The current frozen candidate is Gold / XAU/USD London-reference to New York breakout:
-- reference range: five complete M30 candles starting 08:00, 08:30, 09:00, 09:30 and 10:00 Europe/London, forming the 08:00-10:30 London range;
-- trading window: decisions from 08:30 through 11:00 America/New_York;
-- trigger: the first M30 close in that New York window above the London range high or below the London range low;
+The first frozen Gold / XAU/USD London-reference to New York breakout baseline failed the Daily Income Gate and is REJECTED. It is not being tuned further.
+
+The current frozen gold hypothesis is New York momentum continuation:
+- pre-NY impulse window: seven complete M30 candles starting 05:00, 05:30, 06:00, 06:30, 07:00, 07:30 and 08:00 America/New_York;
+- impulse direction is defined by first-open to last-close move;
+- absolute impulse move must be at least 1.0 ATR14 measured on M30 candles as of the 08:30 New York decision point;
+- at least 5 of the 7 impulse candles must have candle-body direction matching the impulse;
+- after 08:30 New York, require the first counter-direction M30 candle as a pullback;
+- the pullback extreme may retrace no more than 50% of the pre-NY impulse; a deeper first pullback invalidates the session;
+- continuation trigger: the first later directional M30 close that resumes beyond both the pullback extreme-side boundary and the pre-NY impulse ending price;
+- continuation decisions are allowed through 11:30 America/New_York;
 - entry: next M30 open;
-- stop: opposite side of the London reference range;
+- stop: pullback low for LONG or pullback high for SHORT;
 - target: 1.5R;
 - maximum holding: 6 M30 bars (3 hours);
-- maximum one breakout attempt per session;
-- if the complete five-bar London reference is unavailable, skip the session;
+- maximum one continuation attempt per session;
 - default risk remains 0.5% per trade;
-- XAU/USD pip size in the research engine is 0.01 USD;
-- modeled round-trip research cost is frozen at 80 pips = 0.80 USD price movement; 2x stress is 160 pips = 1.60 USD;
-- fixed evaluation years are 2023, 2024 and 2025. If the Daily Income Gate passes, 2026 is reserved for later temporal-forward confirmation.
+- XAU/USD pip size remains 0.01 USD;
+- modeled round-trip research cost remains frozen at 80 pips = 0.80 USD price movement; 2x stress is 160 pips = 1.60 USD;
+- fixed evaluation years remain 2023, 2024 and 2025.
 
-Do not tune the London range, New York window, target, stop, holding period or costs after viewing the baseline result. This gold hypothesis receives one frozen baseline plus at most one materially justified modification if the baseline is close but fails the gate.
+Do not tune the impulse threshold, 5-of-7 directional rule, 50% retracement limit, trade window, target, stop, holding period or costs after viewing the baseline result. This is a separate gold hypothesis, not a modification of the rejected London-range breakout. It receives one frozen baseline plus at most one materially justified modification if the baseline is close but fails the gate.
 
 Daily Income Gate is frozen before the first result. A strategy passes only if all conditions hold across the combined fixed test years:
 - at least 250 eligible session days;
