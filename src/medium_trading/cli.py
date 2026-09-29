@@ -13,14 +13,14 @@ from medium_trading.backtest.validation import (
     evaluate_symbol,
 )
 from medium_trading.config import Settings
-from medium_trading.data import import_dukascopy, load_candles, save_candles
-from medium_trading.data.dukascopy_download import download_m30
-from medium_trading.data.oanda import OandaHistoryClient
 from medium_trading.daily_evaluation import (
     DailyStrategyEvaluation,
     evaluate_daily_strategy,
 )
 from medium_trading.daily_evaluation import evaluation_payload as daily_evaluation_payload
+from medium_trading.data import import_dukascopy, load_candles, save_candles
+from medium_trading.data.dukascopy_download import download_m30
+from medium_trading.data.oanda import OandaHistoryClient
 from medium_trading.direct_ml import (
     evaluate_direct_ml_final,
     evaluate_direct_ml_opportunities,
