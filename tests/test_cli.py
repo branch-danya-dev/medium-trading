@@ -313,3 +313,43 @@ def test_daily_evaluate_parser_accepts_gold_exhaustion_reversal(monkeypatch) -> 
     args = captured[0]
     assert args.strategy == "gold-ny-exhaustion-reversal"
     assert args.cost == ["XAU/USD=80"]
+
+
+def test_crypto_daily_volatility_expansion_defaults() -> None:
+    assert cli._strategy_backtest_defaults(
+        "crypto-daily-volatility-expansion"
+    ) == (1.5, 8)
+
+
+def test_crypto_daily_evaluation_uses_utc_sessions() -> None:
+    assert cli._daily_evaluation_clock(
+        "crypto-daily-volatility-expansion"
+    ) == ("UTC", (0, 0))
+
+
+def test_daily_evaluate_parser_accepts_crypto_volatility_expansion(
+    monkeypatch,
+) -> None:
+    captured = []
+
+    monkeypatch.setattr(cli, "_daily_evaluate", captured.append)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "medium-trading",
+            "daily-evaluate",
+            "--strategy",
+            "crypto-daily-volatility-expansion",
+            "--dataset",
+            "BTC/USD=data/crypto/BTC_USD_M30.csv",
+            "--cost",
+            "BTC/USD=50",
+        ],
+    )
+
+    cli.main()
+
+    args = captured[0]
+    assert args.strategy == "crypto-daily-volatility-expansion"
+    assert args.cost == ["BTC/USD=50"]
