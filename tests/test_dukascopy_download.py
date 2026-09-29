@@ -10,6 +10,7 @@ from medium_trading.data.dukascopy_download import (
     build_endpoint_url,
     decode_minute_payload,
     endpoint_symbol,
+    _requested_dates,
 )
 
 
@@ -116,3 +117,30 @@ def test_connection_reset_is_retried(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_endpoint_symbol_accepts_index_cfd_notation() -> None:
     assert endpoint_symbol("USATECH.IDX/USD") == "USATECH.IDX-USD"
     assert endpoint_symbol("USA500.IDX/USD") == "USA500.IDX-USD"
+
+
+def test_crypto_history_includes_saturdays() -> None:
+    dates = _requested_dates(
+        symbol="BTC/USD",
+        start=date(2025, 7, 4),
+        end=date(2025, 7, 6),
+    )
+
+    assert dates == (
+        date(2025, 7, 4),
+        date(2025, 7, 5),
+        date(2025, 7, 6),
+    )
+
+
+def test_fx_history_still_skips_saturdays() -> None:
+    dates = _requested_dates(
+        symbol="EUR/USD",
+        start=date(2025, 7, 4),
+        end=date(2025, 7, 6),
+    )
+
+    assert dates == (
+        date(2025, 7, 4),
+        date(2025, 7, 6),
+    )
