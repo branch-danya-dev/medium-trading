@@ -1,5 +1,6 @@
 import json
 from datetime import UTC, date, datetime
+from typing import Self
 
 import pytest
 
@@ -86,7 +87,7 @@ def test_connection_reset_is_retried(monkeypatch: pytest.MonkeyPatch) -> None:
     class Response:
         status = 200
 
-        def __enter__(self) -> "Response":
+        def __enter__(self) -> Self:
             return self
 
         def __exit__(self, *_args: object) -> None:
