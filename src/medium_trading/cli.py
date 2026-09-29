@@ -36,6 +36,18 @@ from medium_trading.daily_evaluation import (
 from medium_trading.daily_evaluation import evaluation_payload as daily_evaluation_payload
 from medium_trading.data import import_dukascopy, load_candles, save_candles
 from medium_trading.data.bybit_download import download_m30 as download_bybit_m30
+from medium_trading.data.bybit_download import download_m5 as download_bybit_m5
+from medium_trading.data.bybit_state_history import (
+    download_account_ratio,
+    download_funding_history,
+    download_open_interest,
+    load_account_ratio,
+    load_funding,
+    load_open_interest,
+    save_account_ratio,
+    save_funding,
+    save_open_interest,
+)
 from medium_trading.data.dukascopy_download import download_m30
 from medium_trading.data.oanda import OandaHistoryClient
 from medium_trading.direct_ml import (
@@ -52,6 +64,13 @@ from medium_trading.ml_filter import (
 )
 from medium_trading.ml_filter import evaluation_payload as ml_evaluation_payload
 from medium_trading.ml_filter import forward_evaluation_payload as ml_forward_payload
+from medium_trading.market_state_model import (
+    evaluate_market_state_v01,
+    extract_market_state_samples,
+)
+from medium_trading.market_state_model import (
+    evaluation_payload as market_state_payload,
+)
 from medium_trading.strategy import (
     CryptoDailyVolatilityExpansionStrategy,
     CryptoIntradayMomentumContinuationStrategy,
@@ -115,6 +134,14 @@ def main() -> None:
         default="https://api.bybit.com/v5/market/kline",
     )
     bybit_download.add_argument("--output-dir", default="data/bybit")
+
+
+    bybit_state = subparsers.add_parser("download-bybit-state")
+    bybit_state.add_argument("--symbol", default="BTCUSDT")
+    bybit_state.add_argument("--from", dest="start", required=True)
+    bybit_state.add_argument("--to", dest="end", required=True)
+    bybit_state.add_argument("--base-url", default="https://api.bybit.com")
+    bybit_state.add_argument("--output-dir", default="data/bybit/state")
 
     dukascopy_import = subparsers.add_parser("import-dukascopy")
     dukascopy_import.add_argument("--symbol", required=True, help="Example: EUR/USD")
@@ -377,11 +404,35 @@ def main() -> None:
     btc_move_ml.add_argument("--risk", type=float, default=0.005)
     btc_move_ml.add_argument("--json", dest="json_output")
 
+
+    market_state = subparsers.add_parser("btc-market-state-v0-1-evaluate")
+    market_state.add_argument(
+        "--m30",
+        required=True,
+        help="Native Bybit BTCUSDT M30 CSV",
+    )
+    market_state.add_argument(
+        "--m5",
+        required=True,
+        help="Native Bybit BTCUSDT M5 CSV",
+    )
+    market_state.add_argument("--open-interest", required=True)
+    market_state.add_argument("--account-ratio", required=True)
+    market_state.add_argument("--funding", required=True)
+    market_state.add_argument("--symbol", default="BTCUSDT")
+    market_state.add_argument("--fee-bps-per-side", type=float, default=5.5)
+    market_state.add_argument("--slippage-bps-per-side", type=float, default=2.0)
+    market_state.add_argument("--starting-equity", type=float, default=10_000.0)
+    market_state.add_argument("--risk", type=float, default=0.005)
+    market_state.add_argument("--json", dest="json_output")
+
     args = parser.parse_args()
     if args.command == "download-dukascopy":
         _download_dukascopy(args)
     elif args.command == "download-bybit":
         _download_bybit(args)
+    elif args.command == "download-bybit-state":
+        _download_bybit_state(args)
     elif args.command == "import-dukascopy":
         _import_dukascopy(args)
     elif args.command == "download-oanda":
@@ -412,6 +463,8 @@ def main() -> None:
         _btc_long_noise_ml_v0_1_evaluate(args)
     elif args.command == "btc-long-move-ml-v0-2-evaluate":
         _btc_long_move_ml_v0_2_evaluate(args)
+    elif args.command == "btc-market-state-v0-1-evaluate":
+        _btc_market_state_v0_1_evaluate(args)
 
 
 def _download_dukascopy(args: argparse.Namespace) -> None:
@@ -473,6 +526,75 @@ def _download_bybit(args: argparse.Namespace) -> None:
         f"saved {len(result.candles)} strict M30 candles to {output} "
         f"({result.request_count} requests, no missing intervals)"
     )
+
+
+
+def _download_bybit_state(args: argparse.Namespace) -> None:
+    start = date.fromisoformat(args.start)
+    end = date.fromisoformat(args.end)
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    symbol = args.symbol.strip().upper()
+    base_url = args.base_url.rstrip("/")
+
+    print(f"downloading Bybit market-state history {symbol}: {start} -> {end}")
+
+    def kline_progress(done: int, total: int) -> None:
+        if done == total or done % 25 == 0:
+            print(f"  M5 klines {done}/{total} requests")
+
+    m5 = download_bybit_m5(
+        symbol=symbol,
+        category="linear",
+        start=start,
+        end=end,
+        progress=kline_progress,
+        base_url=f"{base_url}/v5/market/kline",
+    )
+    m5_path = output_dir / f"{symbol}_M5.csv"
+    save_candles(m5_path, m5.candles)
+    print(f"saved {len(m5.candles)} M5 candles to {m5_path}")
+
+    def state_progress(label: str):
+        def report(done: int) -> None:
+            if done == 1 or done % 25 == 0:
+                print(f"  {label}: {done} requests")
+        return report
+
+    oi = download_open_interest(
+        symbol=symbol,
+        start=start,
+        end=end,
+        interval="30min",
+        base_url=base_url,
+        progress=state_progress("open interest"),
+    )
+    oi_path = output_dir / f"{symbol}_OPEN_INTEREST_30M.csv"
+    save_open_interest(oi_path, oi)
+    print(f"saved {len(oi)} open-interest points to {oi_path}")
+
+    ratio = download_account_ratio(
+        symbol=symbol,
+        start=start,
+        end=end,
+        period="30min",
+        base_url=base_url,
+        progress=state_progress("account ratio"),
+    )
+    ratio_path = output_dir / f"{symbol}_ACCOUNT_RATIO_30M.csv"
+    save_account_ratio(ratio_path, ratio)
+    print(f"saved {len(ratio)} account-ratio points to {ratio_path}")
+
+    funding = download_funding_history(
+        symbol=symbol,
+        start=start,
+        end=end,
+        base_url=base_url,
+        progress=state_progress("funding"),
+    )
+    funding_path = output_dir / f"{symbol}_FUNDING.csv"
+    save_funding(funding_path, funding)
+    print(f"saved {len(funding)} funding points to {funding_path}")
 
 
 def _import_dukascopy(args: argparse.Namespace) -> None:
@@ -1065,6 +1187,59 @@ def _btc_long_move_ml_v0_2_evaluate(args: argparse.Namespace) -> None:
             encoding="utf-8",
         )
         print(f"wrote BTC LONG real-move ML v0.2 report to {output}")
+
+
+
+def _btc_market_state_v0_1_evaluate(args: argparse.Namespace) -> None:
+    candles_30m = load_candles(Path(args.m30))
+    candles_5m = load_candles(Path(args.m5))
+    open_interest = load_open_interest(Path(args.open_interest))
+    account_ratio = load_account_ratio(Path(args.account_ratio))
+    funding = load_funding(Path(args.funding))
+
+    samples = extract_market_state_samples(
+        candles_30m=candles_30m,
+        candles_5m=candles_5m,
+        open_interest=open_interest,
+        account_ratio=account_ratio,
+        funding=funding,
+        symbol=args.symbol,
+        fee_bps_per_side=args.fee_bps_per_side,
+        slippage_bps_per_side=args.slippage_bps_per_side,
+        starting_equity=args.starting_equity,
+        risk_fraction=args.risk,
+    )
+    evaluation = evaluate_market_state_v01(samples)
+    payload = market_state_payload(evaluation)
+    combined = payload["combined"]
+    classification = combined["classification"]
+    regression = combined["regression"]
+
+    print("BTCUSDT Market State Model v0.1")
+    print(
+        f"samples={classification['samples']} "
+        f"reversal_base={classification['base_reversal_rate']:.1%} "
+        f"precision={classification['precision']:.1%} "
+        f"recall={classification['recall']:.1%} "
+        f"lift={classification['precision_lift']:.2f}x "
+        f"AUC={classification['roc_auc']:.3f}"
+    )
+    print(
+        f"MFE2h MAE={regression['mfe_mae']:.3f}R "
+        f"naive={regression['mfe_naive_mae']:.3f}R | "
+        f"MAE2h MAE={regression['mae_mae']:.3f}R "
+        f"naive={regression['mae_naive_mae']:.3f}R"
+    )
+    print(f"state distribution={combined['state_distribution']}")
+
+    if args.json_output:
+        output = Path(args.json_output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(
+            json.dumps(payload, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        print(f"wrote Market State Model v0.1 report to {output}")
 
 
 def _strategy_from_name(name: str) -> Strategy:
