@@ -85,6 +85,8 @@ def run_backtest(
     signal_count = 0
     cost_rejections = 0
     invalidated_before_entry = 0
+    gap_context_rejections = 0
+    gap_signal_rejections = 0
     trades: list[BacktestTrade] = []
 
     index = 0
@@ -95,6 +97,17 @@ def run_backtest(
             continue
         if trade_end is not None and decision_time > trade_end:
             break
+
+        required_context = config.required_contiguous_context_bars
+        if required_context:
+            if index + 1 < required_context:
+                index += 1
+                continue
+            recent = candles_30m[index + 1 - required_context : index + 1]
+            if not _is_contiguous_m30(recent):
+                gap_context_rejections += 1
+                index += 1
+                continue
 
         one_hour_count = bisect_right(ends_1h, decision_time)
         four_hour_count = bisect_right(ends_4h, decision_time)
@@ -112,6 +125,19 @@ def run_backtest(
 
         signal_count += 1
         entry_index = index + 1
+
+        required_future = config.required_contiguous_future_bars
+        if required_future:
+            future_end = entry_index + required_future
+            execution_window = candles_30m[index:future_end]
+            if (
+                len(execution_window) != required_future + 1
+                or not _is_contiguous_m30(execution_window)
+            ):
+                gap_signal_rejections += 1
+                index += 1
+                continue
+
         entry = candles_30m[entry_index].open
         signal = _resolve_entry_relative_stop(signal, entry)
 
@@ -127,11 +153,17 @@ def run_backtest(
             index += 1
             continue
 
-        effective_cost_pips = (
-            config.round_trip_cost_pips * config.cost_stress_multiplier
+        expected_cost_price = _expected_cost_price(
+            symbol=symbol,
+            entry=entry,
+            exit_price=target,
+            config=config,
         )
-        expected_move_pips = abs(target - entry) / pip_size(symbol)
-        if expected_move_pips / effective_cost_pips < config.minimum_cost_multiple:
+        expected_move = abs(target - entry)
+        if (
+            expected_cost_price > 0
+            and expected_move / expected_cost_price < config.minimum_cost_multiple
+        ):
             cost_rejections += 1
             index += 1
             continue
@@ -144,7 +176,6 @@ def run_backtest(
             entry_index=entry_index,
             candles_30m=candles_30m,
             config=config,
-            effective_cost_pips=effective_cost_pips,
         )
         trades.append(trade)
 
@@ -197,7 +228,30 @@ def run_backtest(
         stop_exits=stop_exits,
         target_exits=target_exits,
         timeout_exits=timeout_exits,
+        gap_context_rejections=gap_context_rejections,
+        gap_signal_rejections=gap_signal_rejections,
     )
+
+
+def _is_contiguous_m30(candles: tuple[Candle, ...]) -> bool:
+    return all(
+        current.timestamp - previous.timestamp == timedelta(minutes=30)
+        for previous, current in zip(candles, candles[1:], strict=False)
+    )
+
+
+def _expected_cost_price(
+    *,
+    symbol: str,
+    entry: float,
+    exit_price: float,
+    config: BacktestConfig,
+) -> float:
+    stress = config.cost_stress_multiplier
+    if config.fee_bps_per_side is not None:
+        bps = config.fee_bps_per_side + config.slippage_bps_per_side
+        return (entry + exit_price) * bps / 10_000.0 * stress
+    return config.round_trip_cost_pips * pip_size(symbol) * stress
 
 
 def _tail(candles: tuple[Candle, ...], end: int) -> tuple[Candle, ...]:
@@ -253,12 +307,12 @@ def simulate_trade(
     entry_index: int,
     candles_30m: tuple[Candle, ...],
     config: BacktestConfig,
-    effective_cost_pips: float,
 ) -> tuple[BacktestTrade, int]:
     risk_distance = abs(entry - signal.stop)
-    last_index = min(
-        len(candles_30m) - 1,
-        entry_index + config.max_holding_bars - 1,
+    last_index = _last_holding_index(
+        candles_30m=candles_30m,
+        entry_index=entry_index,
+        config=config,
     )
     exit_price = candles_30m[last_index].close
     exit_reason = "timeout"
@@ -311,7 +365,14 @@ def simulate_trade(
         if signal.side is Side.LONG
         else (entry - exit_price) / risk_distance
     )
-    cost_r = effective_cost_pips / (risk_distance / pip_size(symbol))
+    fee_r, slippage_r = _actual_cost_r(
+        symbol=symbol,
+        entry=entry,
+        exit_price=exit_price,
+        risk_distance=risk_distance,
+        config=config,
+    )
+    cost_r = fee_r + slippage_r
     net_r = gross_r - cost_r
 
     return (
@@ -327,9 +388,69 @@ def simulate_trade(
             net_r=net_r,
             cost_r=cost_r,
             exit_reason=exit_reason,
+            fee_r=fee_r,
+            slippage_r=slippage_r,
         ),
         exit_index,
     )
+
+
+def _last_holding_index(
+    *,
+    candles_30m: tuple[Candle, ...],
+    entry_index: int,
+    config: BacktestConfig,
+) -> int:
+    if config.max_holding_minutes is None:
+        return min(
+            len(candles_30m) - 1,
+            entry_index + config.max_holding_bars - 1,
+        )
+
+    deadline = candles_30m[entry_index].timestamp + timedelta(
+        minutes=config.max_holding_minutes
+    )
+    last_index = entry_index
+    for current_index in range(entry_index + 1, len(candles_30m)):
+        if candles_30m[current_index].timestamp >= deadline:
+            break
+        last_index = current_index
+    return last_index
+
+
+def _actual_cost_r(
+    *,
+    symbol: str,
+    entry: float,
+    exit_price: float,
+    risk_distance: float,
+    config: BacktestConfig,
+) -> tuple[float, float]:
+    stress = config.cost_stress_multiplier
+    if config.fee_bps_per_side is not None:
+        notional_price_sum = entry + exit_price
+        fee_r = (
+            notional_price_sum
+            * config.fee_bps_per_side
+            / 10_000.0
+            * stress
+            / risk_distance
+        )
+        slippage_r = (
+            notional_price_sum
+            * config.slippage_bps_per_side
+            / 10_000.0
+            * stress
+            / risk_distance
+        )
+        return fee_r, slippage_r
+
+    fixed_cost_r = (
+        config.round_trip_cost_pips
+        * stress
+        / (risk_distance / pip_size(symbol))
+    )
+    return fixed_cost_r, 0.0
 
 
 def _validate_config(config: BacktestConfig) -> None:
@@ -341,12 +462,24 @@ def _validate_config(config: BacktestConfig) -> None:
         raise ValueError("target_r must be positive")
     if config.max_holding_bars <= 0:
         raise ValueError("max_holding_bars must be positive")
-    if config.round_trip_cost_pips <= 0:
-        raise ValueError("round_trip_cost_pips must be positive")
+    if config.fee_bps_per_side is None:
+        if config.round_trip_cost_pips <= 0:
+            raise ValueError("round_trip_cost_pips must be positive")
+    else:
+        if config.fee_bps_per_side < 0:
+            raise ValueError("fee_bps_per_side cannot be negative")
+        if config.slippage_bps_per_side < 0:
+            raise ValueError("slippage_bps_per_side cannot be negative")
     if config.cost_stress_multiplier <= 0:
         raise ValueError("cost_stress_multiplier must be positive")
     if config.minimum_cost_multiple <= 0:
         raise ValueError("minimum_cost_multiple must be positive")
+    if config.max_holding_minutes is not None and config.max_holding_minutes <= 0:
+        raise ValueError("max_holding_minutes must be positive")
+    if config.required_contiguous_context_bars < 0:
+        raise ValueError("required_contiguous_context_bars cannot be negative")
+    if config.required_contiguous_future_bars < 0:
+        raise ValueError("required_contiguous_future_bars cannot be negative")
 
 
 def _empty_report(symbol: str, config: BacktestConfig) -> BacktestReport:
@@ -369,4 +502,6 @@ def _empty_report(symbol: str, config: BacktestConfig) -> BacktestReport:
         stop_exits=0,
         target_exits=0,
         timeout_exits=0,
+        gap_context_rejections=0,
+        gap_signal_rejections=0,
     )
