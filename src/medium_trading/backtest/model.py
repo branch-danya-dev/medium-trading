@@ -35,10 +35,18 @@ class BacktestReport:
     symbol: str
     signal_count: int
     cost_rejections: int
+    invalidated_before_entry: int
     trades: tuple[BacktestTrade, ...]
     starting_equity: float
     final_equity: float
     net_r: float
+    gross_r: float
+    total_cost_r: float
     profit_factor: float
+    gross_profit_factor: float
     win_rate: float
     max_drawdown: float
+    average_holding_hours: float
+    stop_exits: int
+    target_exits: int
+    timeout_exits: int
