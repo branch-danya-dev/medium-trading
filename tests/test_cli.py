@@ -34,3 +34,34 @@ def test_time_series_momentum_backtest_defaults() -> None:
 
 def test_mean_reversion_backtest_defaults() -> None:
     assert cli._strategy_backtest_defaults("mean-reversion") == (2.0, 192)
+
+
+def test_forward_evaluate_parser_requires_fixed_window(monkeypatch) -> None:
+    captured = []
+
+    monkeypatch.setattr(cli, "_forward_evaluate", captured.append)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "medium-trading",
+            "forward-evaluate",
+            "--strategy",
+            "mean-reversion",
+            "--dataset",
+            "EUR/USD=data/forward_2026/EUR_USD_M30.csv",
+            "--trade-start",
+            "2026-01-02",
+            "--trade-end",
+            "2026-09-18",
+        ],
+    )
+
+    cli.main()
+
+    args = captured[0]
+    assert args.strategy == "mean-reversion"
+    assert args.trade_start == "2026-01-02"
+    assert args.trade_end == "2026-09-18"
+    assert args.target_r is None
+    assert args.max_holding_bars is None
