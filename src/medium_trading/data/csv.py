@@ -29,6 +29,7 @@ def load_candles(path: str | Path) -> tuple[Candle, ...]:
                     low=float(row["low"]),
                     close=float(row["close"]),
                     volume=float(row.get("volume") or 0.0),
+                    spread=float(row.get("spread") or 0.0),
                 )
             )
 
@@ -44,7 +45,7 @@ def save_candles(path: str | Path, candles: tuple[Candle, ...]) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     with destination.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.writer(handle)
-        writer.writerow(("timestamp", "open", "high", "low", "close", "volume"))
+        writer.writerow(("timestamp", "open", "high", "low", "close", "volume", "spread"))
         for candle in candles:
             writer.writerow(
                 (
@@ -54,5 +55,6 @@ def save_candles(path: str | Path, candles: tuple[Candle, ...]) -> None:
                     candle.low,
                     candle.close,
                     candle.volume,
+                    candle.spread,
                 )
             )

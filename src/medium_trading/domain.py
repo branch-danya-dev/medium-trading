@@ -23,6 +23,7 @@ class Candle:
     low: float
     close: float
     volume: float = 0.0
+    spread: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)

@@ -53,21 +53,40 @@ pytest
 ruff check .
 ```
 
-## Historical data
+## Historical data: Dukascopy (primary)
 
-The first data adapter uses OANDA v20 only as a source of normalized M30 historical candles. Credentials
-are read from environment variables and are never stored in the repository.
+The primary historical-data path is Dukascopy Historical Data Export. It does not require an OANDA
+account, API token or `.env` file.
+
+Download either:
+
+- 30-minute candle CSV; or
+- bid/ask tick CSV if you want the importer to aggregate M30 candles and report observed spread.
+
+Then normalize it:
 
 ```bash
-medium-trading download-oanda \
-  --instrument EUR_USD \
-  --from 2020-01-01 \
-  --to 2026-01-01 \
+medium-trading import-dukascopy \
+  --symbol EUR/USD \
+  --input downloads/EURUSD.csv \
   --output data/EUR_USD_M30.csv
 ```
 
-The downloader fetches M30 history in bounded chunks. The backtest derives 1h and 4h bars from the same
-M30 source, so higher-timeframe context cannot see unfinished future candles.
+The importer accepts comma, semicolon or tab separated CSV, normalizes common Dukascopy timestamp/header
+formats, and writes the same internal M30 format used by the backtest. Tick imports retain average
+bid/ask spread in each M30 candle and print the observed mean spread in pips.
+
+Repeat for:
+
+```text
+EUR/USD
+GBP/USD
+USD/JPY
+AUD/USD
+```
+
+OANDA v20 remains in the repository only as an optional fallback. Its credentials in `.env.example`
+are not needed for the normal Dukascopy workflow.
 
 ## Backtest
 
@@ -115,7 +134,8 @@ The multi-pair report is a strategy evaluation, not yet a capital-constrained po
 
 ## Status
 
-Repository bootstrap plus historical multi-pair evaluation path. Live/paper execution is intentionally
-not implemented until the strategy survives realistic historical costs and out-of-sample validation.
+Dukascopy CSV import plus historical multi-pair evaluation path are implemented. Live/paper execution is
+intentionally not implemented until the strategy survives realistic historical costs and out-of-sample
+validation.
 
 See [agent.md](agent.md) before making changes.

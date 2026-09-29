@@ -17,6 +17,8 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 - Default risk: 0.5% of equity per trade.
 - Maximum combined open risk: 1.0% of equity.
 - Strategy decisions use closed candles.
+- Dukascopy CSV export is the primary historical-data path; it requires no trading account.
+- OANDA v20 remains optional and must not become an MVP dependency.
 - One broker integration only when live execution is implemented.
 
 Trend Pullback is a baseline candidate, not a proven edge. Breakout is the next strategy candidate only
@@ -46,7 +48,8 @@ Do not add these without a concrete, measured need and a task that explicitly re
 - microservices;
 - a plugin framework;
 - multiple databases;
-- dozens of indicators or parameter grids.
+- dozens of indicators or parameter grids;
+- AWS/S3 infrastructure only to obtain historical data.
 
 SQLite is acceptable later if persistence is needed. Flat CSV/Parquet is acceptable for historical data.
 

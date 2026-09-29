@@ -4,10 +4,10 @@ import os
 from datetime import UTC, datetime
 from pathlib import Path
 
-from medium_trading.backtest.engine import run_backtest
+from medium_trading.backtest.engine import pip_size, run_backtest
 from medium_trading.backtest.model import BacktestConfig, BacktestReport
 from medium_trading.backtest.validation import SymbolEvaluation, evaluate_symbol
-from medium_trading.data import load_candles, save_candles
+from medium_trading.data import import_dukascopy, load_candles, save_candles
 from medium_trading.data.oanda import OandaHistoryClient
 from medium_trading.strategy import TrendPullbackStrategy
 
@@ -15,6 +15,11 @@ from medium_trading.strategy import TrendPullbackStrategy
 def main() -> None:
     parser = argparse.ArgumentParser(prog="medium-trading")
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    dukascopy = subparsers.add_parser("import-dukascopy")
+    dukascopy.add_argument("--symbol", required=True, help="Example: EUR/USD")
+    dukascopy.add_argument("--input", required=True)
+    dukascopy.add_argument("--output", required=True)
 
     download = subparsers.add_parser("download-oanda")
     download.add_argument("--instrument", required=True, help="Example: EUR_USD")
@@ -51,12 +56,29 @@ def main() -> None:
     evaluate.add_argument("--json", dest="json_output")
 
     args = parser.parse_args()
-    if args.command == "download-oanda":
+    if args.command == "import-dukascopy":
+        _import_dukascopy(args)
+    elif args.command == "download-oanda":
         _download_oanda(args)
     elif args.command == "backtest":
         _backtest(args)
     elif args.command == "evaluate":
         _evaluate(args)
+
+
+def _import_dukascopy(args: argparse.Namespace) -> None:
+    result = import_dukascopy(args.input)
+    if not result.candles:
+        raise SystemExit("Dukascopy file contained no usable data")
+
+    save_candles(args.output, result.candles)
+    print(
+        f"imported {len(result.candles)} M30 candles from "
+        f"{result.source_kind} to {args.output}"
+    )
+    if result.mean_spread is not None:
+        spread_pips = result.mean_spread / pip_size(args.symbol)
+        print(f"observed mean bid/ask spread: {spread_pips:.3f} pips")
 
 
 def _download_oanda(args: argparse.Namespace) -> None:

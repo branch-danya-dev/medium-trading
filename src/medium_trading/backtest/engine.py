@@ -43,6 +43,7 @@ def aggregate_candles(
                 low=min(candle.low for candle in group),
                 close=group[-1].close,
                 volume=sum(candle.volume for candle in group),
+                spread=sum(candle.spread for candle in group) / len(group),
             )
         )
     return tuple(result)
