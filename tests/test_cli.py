@@ -87,3 +87,32 @@ def test_ml_evaluate_parser_uses_fixed_research_command(monkeypatch) -> None:
     args = captured[0]
     assert args.default_cost_pips == 1.2
     assert args.risk == 0.005
+
+
+def test_ml_forward_parser_uses_separate_train_and_forward_data(monkeypatch) -> None:
+    captured = []
+
+    monkeypatch.setattr(cli, "_ml_forward_evaluate", captured.append)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "medium-trading",
+            "ml-forward-evaluate",
+            "--train-dataset",
+            "EUR/USD=data/EUR_USD_M30.csv",
+            "--forward-dataset",
+            "EUR/USD=data/forward_2026/EUR_USD_M30.csv",
+            "--trade-start",
+            "2026-01-02",
+            "--trade-end",
+            "2026-09-18",
+        ],
+    )
+
+    cli.main()
+
+    args = captured[0]
+    assert args.trade_start == "2026-01-02"
+    assert args.trade_end == "2026-09-18"
+    assert args.default_cost_pips == 1.2
