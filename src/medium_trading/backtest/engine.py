@@ -125,7 +125,7 @@ def run_backtest(
             index += 1
             continue
 
-        trade, exit_index = _simulate_trade(
+        trade, exit_index = simulate_trade(
             signal=signal,
             symbol=symbol,
             entry=entry,
@@ -219,7 +219,7 @@ def _target_price(
     return entry - target_r * risk_distance
 
 
-def _simulate_trade(
+def simulate_trade(
     *,
     signal: Signal,
     symbol: str,
