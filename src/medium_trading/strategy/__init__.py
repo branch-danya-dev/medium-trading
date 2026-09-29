@@ -1,6 +1,9 @@
 from medium_trading.strategy.gold_london_ny_breakout import (
     GoldLondonNewYorkBreakoutStrategy,
 )
+from medium_trading.strategy.gold_ny_exhaustion_reversal import (
+    GoldNewYorkExhaustionReversalStrategy,
+)
 from medium_trading.strategy.gold_ny_momentum_continuation import (
     GoldNewYorkMomentumContinuationStrategy,
 )
@@ -15,6 +18,7 @@ from medium_trading.strategy.volatility_breakout import VolatilityBreakoutStrate
 
 __all__ = [
     "GoldLondonNewYorkBreakoutStrategy",
+    "GoldNewYorkExhaustionReversalStrategy",
     "GoldNewYorkMomentumContinuationStrategy",
     "MeanReversionStrategy",
     "OpeningRangeBreakoutQualityStrategy",
