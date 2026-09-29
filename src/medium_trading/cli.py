@@ -663,6 +663,7 @@ def _daily_evaluate(args: argparse.Namespace) -> None:
     }
     target_r, max_holding_bars = _strategy_backtest_defaults(args.strategy)
     timezone, required_session_time = _daily_evaluation_clock(args.strategy)
+    minimum_session_bars = _daily_minimum_session_bars(args.strategy)
 
     evaluations: list[DailyStrategyEvaluation] = []
     for symbol, filename in datasets.items():
@@ -678,6 +679,7 @@ def _daily_evaluate(args: argparse.Namespace) -> None:
             ),
             timezone=timezone,
             required_session_time=required_session_time,
+            minimum_session_bars=minimum_session_bars,
         )
         evaluations.append(evaluation)
 
@@ -739,10 +741,24 @@ def _strategy_backtest_defaults(name: str) -> tuple[float, int]:
     return 2.0, 48
 
 
-def _daily_evaluation_clock(name: str) -> tuple[str, tuple[int, int]]:
-    if name == "crypto-daily-volatility-expansion":
-        return "UTC", (0, 0)
+def _daily_evaluation_clock(
+    name: str,
+) -> tuple[str, tuple[int, int] | None]:
+    if name in {
+        "crypto-daily-volatility-expansion",
+        "crypto-intraday-momentum-continuation",
+    }:
+        return "UTC", None
     return "America/New_York", (9, 30)
+
+
+def _daily_minimum_session_bars(name: str) -> int:
+    if name in {
+        "crypto-daily-volatility-expansion",
+        "crypto-intraday-momentum-continuation",
+    }:
+        return 40
+    return 0
 
 
 def _print_daily_evaluations(
