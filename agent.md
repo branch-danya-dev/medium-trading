@@ -13,7 +13,7 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 - Legacy FX universe: EUR/USD, GBP/USD, USD/JPY, AUD/USD plus four external FX pairs used in validation.
 - Current market: Crypto, starting with BTC/USD.
 - Core data timeframe for the current candidate: 30m.
-- Current research candidate: BTC/USD Trend LONG v1.1 corrected-execution rerun.
+- Current research candidate: Bybit BTCUSDT linear-perpetual Trend LONG v1.1 rerun on exchange-native M30 history.
 - Default project starting equity model: USD 1,000. The BTC Trend LONG v1 diagnostic baseline uses USD 10,000 so R-to-USD interpretation is explicit.
 - Default risk: 0.5% of equity per trade.
 - Maximum combined open risk: 1.0% of equity.
@@ -134,6 +134,20 @@ The current rerun keeps the Trend LONG v1.1 strategy completely unchanged and co
 - ML remains OFF and the entry, EMA regime, ATR stop floor, 2R target, 0.5% risk and USD 10,000 starting equity remain unchanged.
 
 This corrected rerun is not a new trading strategy and must not be interpreted as parameter tuning. Its purpose is to establish a trustworthy deterministic LONG baseline before deciding whether an ML noise filter has a valid role.
+
+The next data-source step is exchange-native Bybit history without changing the strategy:
+- venue/product: Bybit USDT perpetual, category=linear, symbol=BTCUSDT;
+- source endpoint: public V5 GET /v5/market/kline;
+- interval: native 30-minute klines, not locally aggregated;
+- fixed research window: 2023-01-01 through 2025-12-31 UTC;
+- downloader must require exactly continuous M30 coverage for the requested historical range and fail visibly on a missing interval; never synthesize a Bybit candle;
+- downloader uses no API key for public market history;
+- default mainnet endpoint is https://api.bybit.com/v5/market/kline, with CLI override for Bybit region-specific REST hosts when required;
+- rerun the exact same v1.1 strategy and corrected execution assumptions on BTCUSDT. Only the venue/data source changes;
+- keep 5.5 bps per-side taker fee and 2.0 bps per-side slippage for the initial Bybit rerun so the result is directly interpretable as conservative taker execution;
+- funding remains out of this specific rerun until the deterministic gross edge is established. If the strategy survives, add actual Bybit historical funding before any paper/live conclusion.
+
+Do not compare the new Bybit result to Dukascopy as though sample counts must match. The purpose is to remove the severe data-fragmentation bias and determine whether the deterministic LONG setup has gross edge on continuous exchange-native BTCUSDT history.
 
 Daily Income Gate is frozen before the first result. A strategy passes only if all conditions hold across the combined fixed test years:
 - at least 250 eligible session days;
