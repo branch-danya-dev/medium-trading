@@ -30,3 +30,7 @@ def test_evaluate_parser_exposes_optional_strategy_defaults(monkeypatch) -> None
 
 def test_time_series_momentum_backtest_defaults() -> None:
     assert cli._strategy_backtest_defaults("time-series-momentum") == (3.0, 240)
+
+
+def test_mean_reversion_backtest_defaults() -> None:
+    assert cli._strategy_backtest_defaults("mean-reversion") == (2.0, 192)
