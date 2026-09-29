@@ -12,7 +12,7 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 - Market: spot FX.
 - Symbols: EUR/USD, GBP/USD, USD/JPY, AUD/USD.
 - Core data timeframes: 4h, 1h, 30m.
-- Current strategy candidate: 4H Mean Reversion / Range Trading.
+- Current research candidate: frozen ML filter over 4H Mean Reversion entries.
 - Starting equity model: USD 1,000.
 - Default risk: 0.5% of equity per trade.
 - Maximum combined open risk: 1.0% of equity.
@@ -28,9 +28,13 @@ Volatility Breakout has been evaluated and is REJECTED: it was negative before c
 
 4H Time-Series Momentum has been evaluated and is REJECTED: it was negative before costs on out-of-sample data across all four MVP pairs. Do not tune or revive it without an explicit new research task.
 
-4H Mean Reversion / Range Trading is the current fixed baseline candidate. Parameters are locked: prior 20-bar 4H mean and standard deviation, entry at an absolute z-score of at least 2.0, 30-bar efficiency-ratio range filter at or below 0.35, ATR14 volatility estimate, 1.5 ATR stop, target fixed at the prior 20-bar mean, signal only when a new 4H candle closes, and 192 M30 bars (4 days) maximum holding. It does not use 1H or 30m entry triggers.
+4H Mean Reversion / Range Trading has been evaluated and is REJECTED as a universal FX strategy. Its first four-pair OOS was positive overall, but the external four-pair holdout was negative overall and the frozen 2026 temporal forward test was negative overall across eight pairs. Its parameters remain locked for reproducibility.
 
-Its first four-pair OOS was positive overall, but the external four-pair cross-instrument holdout was mixed and negative overall. Do not tune the strategy from those results. The next gate is a frozen temporal forward holdout on all eight researched FX pairs, with trades from 2026-01-02 through 2026-09-18, data extended through 2026-09-28 for exit horizon, ordinary costs and 2x costs.
+The current research task is a frozen ML filter over the existing Mean Reversion trade stream. It is not a new autonomous trading strategy. The first baseline uses HistGradientBoostingRegressor with fixed parameters: learning_rate=0.05, max_iter=100, max_leaf_nodes=7, min_samples_leaf=20, l2_regularization=1.0, early_stopping=False, random_state=42. It predicts realized net R and accepts an existing Mean Reversion trade only when predicted net R is above 0.0R.
+
+The fixed features are: side, absolute z-score, 30-bar efficiency ratio, ATR/price, target distance in ATR, reward/risk at actual entry, modeled cost in R, 1/3/6-bar 4H returns in ATR, 10-bar range in ATR, and current 4H candle body in ATR. Symbol identity is deliberately excluded. Do not add features, tune model hyperparameters, change the threshold, or select pairs based on the first ML results.
+
+Historical ML evaluation is expanding-window walk-forward with calendar-year test folds 2023, 2024 and 2025. A training label is usable only if the trade exited before the next test year begins. The already-inspected 2026 period is not a pristine final holdout for ML; final confirmation requires later unseen data or paper-forward observation.
 
 ## Architecture rules
 
@@ -53,7 +57,7 @@ Do not add these without a concrete, measured need and a task that explicitly re
 - Kafka, Redis, Celery or distributed services;
 - large recorder/replay platforms;
 - a separate research runtime with duplicated strategy logic;
-- ML/LLM trading decisions;
+- ML/LLM trading decisions outside the explicitly frozen ML research task;
 - microservices;
 - a plugin framework;
 - multiple databases;
