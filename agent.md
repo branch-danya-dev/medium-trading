@@ -11,9 +11,9 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 
 - Research scope: multiple liquid markets, evaluated one strategy/market hypothesis at a time.
 - Legacy FX universe: EUR/USD, GBP/USD, USD/JPY, AUD/USD plus four external FX pairs used in validation.
-- Current market: US index CFDs USA500.IDX/USD and USATECH.IDX/USD.
+- Current market: US index CFDs, with USA500 baseline closed and USATECH in one final ORB variant.
 - Core data timeframe for the current candidate: 30m.
-- Current research candidate: frozen 30m US cash Opening Range Breakout.
+- Current research candidate: final frozen USATECH Opening Range Breakout quality filter.
 - Starting equity model: USD 1,000.
 - Default risk: 0.5% of equity per trade.
 - Maximum combined open risk: 1.0% of equity.
@@ -45,17 +45,23 @@ The first Direct ML walk-forward failed, and its final pre-registered best-oppor
 
 The project now evaluates market-specific strategies with daily-income consistency as a first-class gate. Do not optimize for a requested percentage return per day. Measure R/day first; translate to percentage returns only after a strategy survives costs and stability gates.
 
-The current frozen candidate is a US index Opening Range Breakout on USA500.IDX/USD and USATECH.IDX/USD:
+The first frozen US index Opening Range Breakout baseline was evaluated on USA500.IDX/USD and USATECH.IDX/USD over 2023-2025. USA500 is REJECTED and receives no second attempt. USATECH was positive overall and positive in 2 of 3 years, but failed the Daily Income Gate because combined net PF, 2x-cost PF and positive-month rate were below threshold.
+
+Exactly one final USATECH modification is allowed. It keeps the same opening range, entry, stop, target, holding period, risk, cost model and session window, and changes only breakout quality:
 - opening range: the 09:30-10:00 America/New_York M30 candle;
-- trigger: the first later M30 close outside that range, with breakout decisions ending at 13:00 New York time;
+- identify the first later M30 close outside that range, with breakout decisions ending at 13:00 New York time;
+- that first breakout close must extend at least 10% of the opening-range width beyond the relevant boundary;
+- if the first breakout close is weaker than 10%, skip the entire session; do not give a second chance later that day;
 - entry: next M30 open;
 - stop: opposite side of the opening range;
 - target: 1.5R;
 - maximum holding: 6 M30 bars (3 hours);
 - maximum one breakout attempt per session;
 - default risk remains 0.5% per trade;
-- modeled round-trip research costs are frozen at 1.0 index price point for USA500.IDX/USD and 3.0 index price points for USATECH.IDX/USD;
-- initial fixed evaluation years: 2023, 2024 and 2025. If this gate passes, 2026 is reserved for a later temporal-forward diagnostic.
+- modeled round-trip research cost remains frozen at 3.0 index price points for USATECH.IDX/USD;
+- fixed evaluation years remain 2023, 2024 and 2025.
+
+This is the final ORB attempt on US indices. If the USATECH quality-filter variant fails any Daily Income Gate condition, mark US-index ORB REJECTED and move to the next market hypothesis. Do not tune the 10% threshold, target, stop, holding period or costs after viewing the result.
 
 Daily Income Gate is frozen before the first result. A strategy passes only if all conditions hold across the combined fixed test years:
 - at least 250 eligible session days;
