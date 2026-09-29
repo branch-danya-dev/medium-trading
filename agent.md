@@ -12,7 +12,7 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 - Market: spot FX.
 - Symbols: EUR/USD, GBP/USD, USD/JPY, AUD/USD.
 - Core data timeframes: 4h, 1h, 30m.
-- Current research candidate: frozen direct 4H ML opportunity model.
+- Current research candidate: final frozen Direct ML best-opportunity gate.
 - Starting equity model: USD 1,000.
 - Default risk: 0.5% of equity per trade.
 - Maximum combined open risk: 1.0% of equity.
@@ -38,7 +38,11 @@ Direct-ML execution is fixed before the first historical evaluation: entry at th
 
 Direct-ML model parameters are fixed: learning_rate=0.05, max_iter=120, max_leaf_nodes=7, min_samples_leaf=30, l2_regularization=1.0, early_stopping=False, random_state=42. The fixed features are 1/3/6/12/30-bar 4H returns in ATR, 20/50-bar z-scores, 10/30-bar efficiency ratios, ATR/price, ATR14/ATR50, 10/30-bar ranges in ATR, current 4H candle body and range in ATR, and position inside the 20-bar range. Symbol identity is deliberately excluded.
 
-Historical direct-ML evaluation is expanding-window walk-forward with calendar-year test folds 2023, 2024 and 2025. A training opportunity is usable only if both hypothetical LONG and SHORT outcomes were fully known before the test year begins. Do not add features, tune model hyperparameters, change the threshold, execution template, cost gate or pair selection after reading the first direct-ML results. The already-inspected 2026 period may only be used later as a frozen diagnostic check; final confirmation requires later unseen data or paper-forward observation.
+Historical direct-ML evaluation is expanding-window walk-forward with calendar-year test folds 2023, 2024 and 2025. A training opportunity is usable only if both hypothetical LONG and SHORT outcomes were fully known before the test year begins.
+
+The first Direct ML walk-forward failed: combined net and gross evidence was insufficient and all three yearly net results were negative. Exactly one final modification is allowed before rejecting Direct ML: at each 4H decision timestamp rank every pair and both directions by the unchanged model predictions, open only the single highest predicted opportunity above 0.0R, and allow at most one open position globally. Model parameters, features, execution, cost gate, threshold and pair universe remain unchanged.
+
+The final Direct ML kill-gate is frozen before the result is viewed. Direct ML passes only if all conditions hold: at least 500 selected trades, combined gross profit factor > 1.00, combined net profit factor >= 1.10, combined 2x-cost profit factor > 1.00, and positive net R in at least 2 of the 3 test years. Failure of any condition means Direct ML is REJECTED. Do not tune it further on these datasets. The already-inspected 2026 period may only be used if this historical final gate passes; final confirmation still requires later unseen data or paper-forward observation.
 
 ## Architecture rules
 
