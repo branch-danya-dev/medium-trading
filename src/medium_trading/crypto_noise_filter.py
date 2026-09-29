@@ -288,7 +288,7 @@ def evaluate_btc_long_noise_filter_v01(
             [sample.features for sample in economic],
         )
         predicted = tuple(
-            probability >= PROBABILITY_THRESHOLD
+            bool(probability >= PROBABILITY_THRESHOLD)
             for probability in probabilities
         )
         selected = tuple(
@@ -597,39 +597,49 @@ def _classification_metrics(
     if len(truth) != len(predicted):
         raise ValueError("classification arrays must have equal length")
 
-    true_positive = sum(
-        actual and guess
-        for actual, guess in zip(truth, predicted, strict=True)
+    true_positive = int(
+        sum(
+            bool(actual) and bool(guess)
+            for actual, guess in zip(truth, predicted, strict=True)
+        )
     )
-    false_positive = sum(
-        not actual and guess
-        for actual, guess in zip(truth, predicted, strict=True)
+    false_positive = int(
+        sum(
+            (not bool(actual)) and bool(guess)
+            for actual, guess in zip(truth, predicted, strict=True)
+        )
     )
-    false_negative = sum(
-        actual and not guess
-        for actual, guess in zip(truth, predicted, strict=True)
+    false_negative = int(
+        sum(
+            bool(actual) and (not bool(guess))
+            for actual, guess in zip(truth, predicted, strict=True)
+        )
     )
-    true_negative = sum(
-        not actual and not guess
-        for actual, guess in zip(truth, predicted, strict=True)
+    true_negative = int(
+        sum(
+            (not bool(actual)) and (not bool(guess))
+            for actual, guess in zip(truth, predicted, strict=True)
+        )
     )
 
+    predicted_clean = true_positive + false_positive
+    actual_clean = true_positive + false_negative
     return ClassificationMetrics(
-        candidates=len(truth),
-        predicted_clean=true_positive + false_positive,
-        actual_clean=true_positive + false_negative,
-        true_positive=true_positive,
-        false_positive=false_positive,
-        false_negative=false_negative,
-        true_negative=true_negative,
-        precision=(
-            true_positive / (true_positive + false_positive)
-            if true_positive + false_positive
+        candidates=int(len(truth)),
+        predicted_clean=int(predicted_clean),
+        actual_clean=int(actual_clean),
+        true_positive=int(true_positive),
+        false_positive=int(false_positive),
+        false_negative=int(false_negative),
+        true_negative=int(true_negative),
+        precision=float(
+            true_positive / predicted_clean
+            if predicted_clean
             else 0.0
         ),
-        recall=(
-            true_positive / (true_positive + false_negative)
-            if true_positive + false_negative
+        recall=float(
+            true_positive / actual_clean
+            if actual_clean
             else 0.0
         ),
     )
