@@ -55,12 +55,13 @@ def main() -> None:
     backtest.add_argument(
         "--strategy",
         choices=_STRATEGY_CHOICES,
-        default="volatility-breakout",
+        default="time-series-momentum",
     )
     backtest.add_argument("--round-trip-cost-pips", type=float, default=1.2)
     backtest.add_argument("--cost-stress", type=float, default=1.0)
     backtest.add_argument("--risk", type=float, default=0.005)
-    backtest.add_argument("--target-r", type=float, default=2.0)
+    backtest.add_argument("--target-r", type=float)
+    backtest.add_argument("--max-holding-bars", type=int)
 
     evaluate = subparsers.add_parser("evaluate")
     evaluate.add_argument(
@@ -78,11 +79,12 @@ def main() -> None:
     evaluate.add_argument(
         "--strategy",
         choices=_STRATEGY_CHOICES,
-        default="volatility-breakout",
+        default="time-series-momentum",
     )
     evaluate.add_argument("--default-cost-pips", type=float, default=1.2)
     evaluate.add_argument("--risk", type=float, default=0.005)
-    evaluate.add_argument("--target-r", type=float, default=2.0)
+    evaluate.add_argument("--target-r", type=float)
+    evaluate.add_argument("--max-holding-bars", type=int)
     evaluate.add_argument("--train-fraction", type=float, default=0.60)
     evaluate.add_argument("--validation-fraction", type=float, default=0.20)
     evaluate.add_argument("--json", dest="json_output")
