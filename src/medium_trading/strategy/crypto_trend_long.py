@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 from medium_trading.domain import Side, Signal, StrategyContext
 
 
@@ -69,3 +71,48 @@ class CryptoTrendLongStrategy:
             ema = alpha * value + (1.0 - alpha) * ema
             result.append(ema)
         return tuple(result)
+
+
+
+class CryptoTrendLongV11Strategy(CryptoTrendLongStrategy):
+    """BTC Trend LONG v1.1: same setup, stop cannot be tighter than ATR14."""
+
+    name = "crypto_trend_long_v1_1"
+    atr_period = 14
+
+    def evaluate(self, context: StrategyContext) -> Signal | None:
+        signal = super().evaluate(context)
+        if signal is None:
+            return None
+
+        atr = self._atr(context.candles_30m, self.atr_period)
+        if atr <= 0:
+            return None
+
+        return replace(
+            signal,
+            strategy=self.name,
+            minimum_stop_distance=atr,
+            reasons=signal.reasons
+            + (
+                "stop floor: at least 1.0 x M30 ATR14 from actual next-open entry",
+            ),
+        )
+
+    @staticmethod
+    def _atr(candles: tuple, period: int) -> float:
+        if len(candles) < period + 1:
+            return 0.0
+
+        ranges = []
+        for index in range(len(candles) - period, len(candles)):
+            candle = candles[index]
+            previous_close = candles[index - 1].close
+            ranges.append(
+                max(
+                    candle.high - candle.low,
+                    abs(candle.high - previous_close),
+                    abs(candle.low - previous_close),
+                )
+            )
+        return sum(ranges) / period
