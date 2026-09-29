@@ -217,3 +217,35 @@ def test_daily_evaluate_parser_accepts_orb_quality(monkeypatch) -> None:
     cli.main()
 
     assert captured[0].strategy == "opening-range-breakout-quality"
+
+
+def test_gold_london_ny_breakout_defaults() -> None:
+    assert cli._strategy_backtest_defaults(
+        "gold-london-ny-breakout"
+    ) == (1.5, 6)
+
+
+def test_daily_evaluate_parser_accepts_gold_breakout(monkeypatch) -> None:
+    captured = []
+
+    monkeypatch.setattr(cli, "_daily_evaluate", captured.append)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "medium-trading",
+            "daily-evaluate",
+            "--strategy",
+            "gold-london-ny-breakout",
+            "--dataset",
+            "XAU/USD=data/gold/XAU_USD_M30.csv",
+            "--cost",
+            "XAU/USD=80",
+        ],
+    )
+
+    cli.main()
+
+    args = captured[0]
+    assert args.strategy == "gold-london-ny-breakout"
+    assert args.cost == ["XAU/USD=80"]
