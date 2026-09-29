@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime, timedelta
 
 from medium_trading.backtest.model import BacktestTrade
@@ -80,6 +81,7 @@ def test_walk_forward_noise_filter_learns_simple_clean_signal() -> None:
     assert payload["research_scope"]["2026_used"] is False
     assert payload["model"]["probability_threshold"] == 0.5
     assert payload["economic_gate"]["minimum_target_to_cost"] == 8.0
+    json.dumps(payload, sort_keys=True)
 
 
 def test_training_requires_label_to_be_known_before_fold() -> None:
