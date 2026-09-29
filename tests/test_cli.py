@@ -523,3 +523,29 @@ def test_corrected_btc_parser_accepts_exchange_symbol(monkeypatch) -> None:
     cli.main()
 
     assert captured[0].symbol == "BTCUSDT"
+
+
+
+def test_btc_noise_ml_v0_1_parser_uses_frozen_defaults(monkeypatch) -> None:
+    captured = []
+
+    monkeypatch.setattr(cli, "_btc_long_noise_ml_v0_1_evaluate", captured.append)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "medium-trading",
+            "btc-long-noise-ml-v0-1-evaluate",
+            "--data",
+            "data/bybit/BTCUSDT_M30.csv",
+        ],
+    )
+
+    cli.main()
+
+    args = captured[0]
+    assert args.symbol == "BTCUSDT"
+    assert args.fee_bps_per_side == 5.5
+    assert args.slippage_bps_per_side == 2.0
+    assert args.starting_equity == 10_000.0
+    assert args.risk == 0.005
