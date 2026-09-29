@@ -4,8 +4,11 @@ from medium_trading.backtest.model import BacktestTrade
 from medium_trading.direct_ml import (
     FEATURE_NAMES,
     OpportunitySample,
+    _select_best_model_trades,
+    evaluate_direct_ml_final,
     evaluate_direct_ml_opportunities,
     evaluation_payload,
+    final_evaluation_payload,
 )
 from medium_trading.domain import Side
 
@@ -150,3 +153,106 @@ def test_direct_ml_training_excludes_unknown_labels_at_fold_boundary() -> None:
     )
 
     assert evaluation.folds[0].train_samples == 600
+
+
+def test_best_selector_takes_one_global_opportunity_and_respects_open_trade() -> None:
+    first_time = datetime(2025, 1, 1, tzinfo=UTC)
+    first_a = _sample(year=2025, index=0, long_is_good=True)
+    first_b = OpportunitySample(
+        symbol="GBP/USD",
+        decision_time=first_time,
+        features=first_a.features,
+        long_trade=BacktestTrade(
+            symbol="GBP/USD",
+            side=Side.LONG,
+            entry_time=first_time,
+            exit_time=first_time + timedelta(hours=6),
+            entry=1.0,
+            stop=0.99,
+            exit=1.01,
+            gross_r=1.1,
+            net_r=1.0,
+            cost_r=0.1,
+            exit_reason="target",
+        ),
+        short_trade=BacktestTrade(
+            symbol="GBP/USD",
+            side=Side.SHORT,
+            entry_time=first_time,
+            exit_time=first_time + timedelta(hours=6),
+            entry=1.0,
+            stop=1.01,
+            exit=1.01,
+            gross_r=-0.9,
+            net_r=-1.0,
+            cost_r=0.1,
+            exit_reason="stop",
+        ),
+    )
+    blocked = _sample(year=2025, index=1, long_is_good=True)
+    after_exit = _sample(year=2025, index=2, long_is_good=True)
+
+    samples = (first_a, first_b, blocked, after_exit)
+    selected = _select_best_model_trades(
+        samples,
+        long_predictions=(0.2, 0.8, 0.9, 0.7),
+        short_predictions=(-0.2, -0.1, -0.2, -0.1),
+    )
+
+    assert len(selected) == 2
+    assert selected[0].symbol == "GBP/USD"
+    assert selected[1].entry_time == after_exit.long_trade.entry_time
+
+
+def test_final_direct_ml_evaluation_exposes_locked_kill_gate() -> None:
+    samples = []
+    symbols = ("EUR/USD", "GBP/USD")
+    for year in range(2020, 2026):
+        for index in range(200):
+            base = _sample(
+                year=year,
+                index=index,
+                long_is_good=index % 2 == 0,
+            )
+            for symbol in symbols:
+                samples.append(
+                    OpportunitySample(
+                        symbol=symbol,
+                        decision_time=base.decision_time,
+                        features=base.features,
+                        long_trade=BacktestTrade(
+                            symbol=symbol,
+                            side=base.long_trade.side,
+                            entry_time=base.long_trade.entry_time,
+                            exit_time=base.long_trade.exit_time,
+                            entry=base.long_trade.entry,
+                            stop=base.long_trade.stop,
+                            exit=base.long_trade.exit,
+                            gross_r=base.long_trade.gross_r,
+                            net_r=base.long_trade.net_r,
+                            cost_r=base.long_trade.cost_r,
+                            exit_reason=base.long_trade.exit_reason,
+                        ),
+                        short_trade=BacktestTrade(
+                            symbol=symbol,
+                            side=base.short_trade.side,
+                            entry_time=base.short_trade.entry_time,
+                            exit_time=base.short_trade.exit_time,
+                            entry=base.short_trade.entry,
+                            stop=base.short_trade.stop,
+                            exit=base.short_trade.exit,
+                            gross_r=base.short_trade.gross_r,
+                            net_r=base.short_trade.net_r,
+                            cost_r=base.short_trade.cost_r,
+                            exit_reason=base.short_trade.exit_reason,
+                        ),
+                    )
+                )
+
+    evaluation = evaluate_direct_ml_final(samples)
+
+    payload = final_evaluation_payload(evaluation)
+    assert payload["execution"]["selection"] == "single_best_global_non_overlapping"
+    assert payload["kill_gate"]["min_trades"] == 500
+    assert payload["kill_gate"]["min_net_profit_factor"] == 1.10
+    assert payload["kill_gate"]["min_positive_years"] == 2
