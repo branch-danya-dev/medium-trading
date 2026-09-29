@@ -20,8 +20,10 @@ from medium_trading.crypto_long_baseline import (
 )
 from medium_trading.crypto_noise_filter import (
     evaluate_btc_long_noise_filter_v01,
-    evaluation_payload as crypto_noise_filter_payload,
     extract_btc_long_noise_samples,
+)
+from medium_trading.crypto_noise_filter import (
+    evaluation_payload as crypto_noise_filter_payload,
 )
 from medium_trading.daily_evaluation import (
     DailyStrategyEvaluation,
