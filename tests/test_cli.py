@@ -249,3 +249,35 @@ def test_daily_evaluate_parser_accepts_gold_breakout(monkeypatch) -> None:
     args = captured[0]
     assert args.strategy == "gold-london-ny-breakout"
     assert args.cost == ["XAU/USD=80"]
+
+
+def test_gold_ny_momentum_continuation_defaults() -> None:
+    assert cli._strategy_backtest_defaults(
+        "gold-ny-momentum-continuation"
+    ) == (1.5, 6)
+
+
+def test_daily_evaluate_parser_accepts_gold_momentum(monkeypatch) -> None:
+    captured = []
+
+    monkeypatch.setattr(cli, "_daily_evaluate", captured.append)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "medium-trading",
+            "daily-evaluate",
+            "--strategy",
+            "gold-ny-momentum-continuation",
+            "--dataset",
+            "XAU/USD=data/gold/XAU_USD_M30.csv",
+            "--cost",
+            "XAU/USD=80",
+        ],
+    )
+
+    cli.main()
+
+    args = captured[0]
+    assert args.strategy == "gold-ny-momentum-continuation"
+    assert args.cost == ["XAU/USD=80"]
