@@ -9,7 +9,7 @@ The first version is intentionally small:
 - research markets are tested separately rather than forcing one universal strategy;
 - legacy FX research remains reproducible;
 - current market: Crypto, starting with BTC/USD;
-- current candidate: Bybit BTCUSDT Trend LONG v1.1 + ML noise-filter v0.1;
+- current candidate: Bybit BTCUSDT Trend LONG v1.1 + real-move ML filter v0.2;
 - daily-income consistency is now a primary evaluation target;
 - starting equity model: USD 1,000;
 - default risk: 0.5% per trade, 1.0% maximum combined open risk;
@@ -637,6 +637,35 @@ The report compares raw baseline, economic-gate only and economic-gate + ML on t
 stream, with ordinary/2x-cost PnL metrics plus CLEAN precision/recall and class counts. v0.1 only answers
 whether the noise-filter concept has useful out-of-sample discrimination; do not tune it from the first
 result.
+
+v0.1 failed the feasibility test. After the economic gate, CLEAN prevalence was about 47.3%, while the
+model's selected set had only 41.6% CLEAN precision and 31.8% recall. Economic-gate only was +27.16R
+gross / -21.45R net; adding v0.1 ML made the selected set -15.57R gross / -34.38R net. The failure
+direction appeared in both 2024 and 2025, so v0.1 is not threshold-tuned.
+
+v0.2 changes only the label question. The model, features, 0.50 threshold, economic gate and trading
+strategy remain frozen. REAL_MOVE means the market reaches +2R from entry within 24 hours regardless of
+whether the original stop is touched first. Diagnostics split positives into DIRECT_MOVE (+2R before
+stop) and POST_STOP_MOVE (stop first, then +2R). NO_MOVE means +2R is not reached within 24 hours.
+
+2024 and 2025 are now development walk-forward folds rather than pristine OOS because their v0.1 results
+have already been inspected. 2026 remains untouched.
+
+Run v0.2:
+
+    medium-trading btc-long-move-ml-v0-2-evaluate `
+      --data "data/bybit/BTCUSDT_M30.csv" `
+      --symbol BTCUSDT `
+      --fee-bps-per-side 5.5 `
+      --slippage-bps-per-side 2.0 `
+      --starting-equity 10000 `
+      --risk 0.005 `
+      --json artifacts/bybit_btcusdt_move_ml_v0_2.json
+
+The primary v0.2 question is classification lift: does selected REAL_MOVE precision exceed the
+economic-gate REAL_MOVE base rate with useful recall, consistently across both development folds?
+Trade PnL remains reported because POST_STOP_MOVE can still lose under the current execution despite
+being a true REAL_MOVE label.
 
 The legacy daily gate remains strict and conjunctive for the older daily-income studies: at least 250 eligible sessions, at least 300 trades, >=70%
 active-session rate, >=45% profitable active days, positive average net R/session, net PF >=1.15,
