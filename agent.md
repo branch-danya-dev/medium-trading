@@ -11,9 +11,9 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 
 - Research scope: multiple liquid markets, evaluated one strategy/market hypothesis at a time.
 - Legacy FX universe: EUR/USD, GBP/USD, USD/JPY, AUD/USD plus four external FX pairs used in validation.
-- Current market: Gold / XAU/USD.
+- Current market: Crypto, starting with BTC/USD.
 - Core data timeframe for the current candidate: 30m.
-- Current research candidate: frozen New York opening exhaustion / reversal on XAU/USD.
+- Current research candidate: frozen BTC/USD UTC Daily Volatility Expansion.
 - Starting equity model: USD 1,000.
 - Default risk: 0.5% of equity per trade.
 - Maximum combined open risk: 1.0% of equity.
@@ -67,25 +67,28 @@ The first frozen Gold / XAU/USD London-reference to New York breakout baseline f
 
 The frozen Gold / XAU/USD New York momentum-continuation baseline failed the Daily Income Gate and is REJECTED. It produced only 54 trades across 773 eligible sessions, so the setup was far too rare for the daily-income objective; the 2x-cost result was also negative. Do not loosen its filters after observing this result.
 
-The current frozen gold hypothesis is New York opening exhaustion / reversal:
-- reference window: three complete M30 candles starting 08:30, 09:00 and 09:30 America/New_York, representing the 08:30-10:00 opening move;
-- opening impulse direction is defined by the 08:30 open to the 10:00 close;
-- absolute opening move must be at least 0.75 ATR14 measured on M30 candles as of the 10:00 close;
-- after 10:00 New York, use the first counter-direction M30 candle as the only reversal candidate for the session;
-- for an upward impulse, the candidate must be bearish and close between the 50% midpoint and the 10:00 impulse close; for a downward impulse, it must be bullish and close between the 10:00 impulse close and the 50% midpoint;
-- if that first counter-direction candle does not close inside this final 50% impulse band, skip the session; do not wait for another reversal candle;
-- reversal decisions are allowed through 12:00 America/New_York;
-- entry: next M30 open;
-- stop: the opening reference high for SHORT or opening reference low for LONG;
-- target: 1.25R;
-- maximum holding: 4 M30 bars (2 hours);
-- maximum one reversal attempt per session;
-- default risk remains 0.5% per trade;
-- XAU/USD pip size remains 0.01 USD;
-- modeled round-trip research cost remains frozen at 80 pips = 0.80 USD price movement; 2x stress is 160 pips = 1.60 USD;
-- fixed evaluation years remain 2023, 2024 and 2025.
+The frozen Gold / XAU/USD New York opening exhaustion / reversal baseline also failed the Daily Income Gate. It produced only 104 trades across 773 eligible sessions, negative net R, net PF below 1, negative 2x-cost results, and zero positive yearly folds. Gold is CLOSED for the current research cycle; do not tune the three inspected gold hypotheses on 2023-2025 data.
 
-Do not tune the 0.75 ATR threshold, 50% reversal band, decision cutoff, target, stop, holding period or costs after viewing the baseline result. This is a separate gold hypothesis, not a modification of the rejected momentum-continuation setup. It receives one frozen baseline plus at most one materially justified modification only if the baseline is close but fails the gate.
+The current frozen crypto hypothesis is BTC/USD UTC Daily Volatility Expansion:
+- crypto daily accounting uses UTC calendar days, not America/New_York sessions;
+- crypto history must include Saturdays as well as Sundays; the downloader keeps all seven UTC days for BTC/USD and ETH/USD;
+- reference range: eight complete M30 candles from 00:00 through 03:30 UTC, representing 00:00-04:00 UTC;
+- measure ATR14 on M30 data as of the 04:00 UTC reference close;
+- breakout window: first qualifying M30 close after 04:00 and through 18:00 UTC;
+- LONG requires the first close at least 0.10 ATR14 above the reference high;
+- SHORT requires the first close at least 0.10 ATR14 below the reference low;
+- if a qualifying first breakout exists, later breakouts that UTC day are ignored;
+- entry: next M30 open;
+- stop: midpoint of the 00:00-04:00 UTC reference range;
+- target: 1.5R;
+- maximum holding: 8 M30 bars (4 hours);
+- maximum one volatility-expansion attempt per UTC day;
+- default risk remains 0.5% per trade;
+- BTC/USD and ETH/USD research pip size is 1.0 USD;
+- modeled BTC/USD round-trip research cost is frozen at 50 USD price points; 2x stress is 100 USD. This is a conservative research assumption, not a broker spread quote;
+- fixed evaluation years are 2023, 2024 and 2025. If the Daily Income Gate passes, 2026 is reserved for later temporal-forward confirmation.
+
+Do not tune the UTC reference range, 0.10 ATR extension, midpoint stop, target, holding period, decision cutoff or 50 USD cost after viewing the baseline result. This crypto hypothesis receives one frozen baseline plus at most one materially justified modification only if the baseline is close but fails the gate.
 
 Daily Income Gate is frozen before the first result. A strategy passes only if all conditions hold across the combined fixed test years:
 - at least 250 eligible session days;
