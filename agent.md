@@ -13,7 +13,7 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 - Legacy FX universe: EUR/USD, GBP/USD, USD/JPY, AUD/USD plus four external FX pairs used in validation.
 - Current market: Crypto, starting with BTC/USD.
 - Core data timeframe for the current candidate: 30m.
-- Current research candidate: Bybit BTCUSDT Market State Model v0.1 for in-trade noise-vs-reversal feasibility.
+- Current research candidate: Bybit BTCUSDT Market Structure Model v0.2 for explicit structure-based noise-vs-reversal feasibility.
 - Default project starting equity model: USD 1,000. The BTC Trend LONG v1 diagnostic baseline uses USD 10,000 so R-to-USD interpretation is explicit.
 - Default risk: 0.5% of equity per trade.
 - Maximum combined open risk: 1.0% of equity.
@@ -225,6 +225,35 @@ Market State Model v0.1 is frozen as follows:
 - Market State Model v0.1 is diagnostic only. It does not yet replace the deterministic stop or issue live HOLD/EXIT commands.
 
 Do not tune the v0.1 threshold or model after the first result. First determine whether richer M5/multi-timeframe/positioning state contains measurable information about reversal versus recoverable noise.
+
+Market State Model v0.1 FAILED as a discriminator. On the combined 2024-2025 development folds, reversal base rate was 27.55%, precision 25.79%, recall 7.70%, precision lift 0.94x and ROC AUC 0.512. The 2h MFE and MAE regressors also failed to beat naive training-mean baselines overall. Do not tune its threshold, label distances or boosting hyperparameters on these inspected years.
+
+The next frozen task is Market Structure Model v0.2. It changes the representation, not the trading strategy or economic gate. The purpose is to give ML explicit structural events instead of expecting boosting to reconstruct market structure from generic returns.
+
+Market Structure Model v0.2 is frozen as follows:
+- reuse the existing 2023-2025 Bybit M30/M5/open-interest/account-ratio/funding bundle; do not touch 2026;
+- use the same economic-pass Trend LONG v1.1 candidate stream and the same 15-minute stress snapshots while the original position is alive;
+- identify causal confirmed M5 swing lows/highs with 2 bars on the left and 2 bars on the right; a swing is usable only after its right-side confirmation bars have closed;
+- for LONG management, the most recent confirmed swing low is the primary structural invalidation level;
+- add explicit structural features: distance to last swing low/high, swing range and age, low/close break flags, close displacement through the level, wick/sweep depth, body fraction below the level, count/consecutive closes below, fast reclaim, break-volume z-score, post-break volume ratio, retest occurrence/hold, and lower-low/lower-high state;
+- keep slower M15/M30/1H/4H context, current trade path, OI, account positioning and funding as secondary context;
+- a structural break requires an M5 body close at least 0.10 ATR5 below the confirmed swing low;
+- acceptance window is the next 5 M5 bars; acceptance requires at least 3 closes below the level;
+- retest confirmation uses a 0.15 ATR5 tolerance around the broken level and requires a close to remain below it;
+- fast reclaim window is 3 M5 bars;
+- label horizon remains 8 hours and local adverse/favorable consequence scale remains +/-0.5R;
+- NOISE = a sweep/break attempt is quickly reclaimed without structural acceptance;
+- CORRECTION = the key swing low remains structurally intact and +0.5R recovery occurs before -0.5R adverse continuation;
+- REVERSAL_CANDIDATE = body closes through the swing low but confirmation remains incomplete;
+- CONFIRMED_REVERSAL = structural body break plus acceptance or held retest, followed by adverse continuation before +0.5R recovery;
+- AMBIGUOUS = all other unclear outcomes;
+- to avoid forcing uncertain labels, train/evaluate the binary classifier only on clear NOISE, CORRECTION and CONFIRMED_REVERSAL samples; exclude REVERSAL_CANDIDATE and AMBIGUOUS from classifier scoring, but report their counts;
+- binary target: CONFIRMED_REVERSAL versus NOISE/CORRECTION;
+- classifier remains a simple HistGradientBoostingClassifier with fixed threshold 0.50; no threshold search;
+- primary diagnostics: clear/excluded sample counts, class distribution, reversal base rate, precision, recall, precision lift, ROC AUC and Brier score for 2024 and 2025 separately and combined;
+- v0.2 remains diagnostic only and does not yet replace the hard stop or issue HOLD/WAIT/EXIT decisions.
+
+Do not tune v0.2 after the first result. First determine whether explicit swing-break/reclaim/retest/volume structure provides stable discrimination in both development folds.
 
 Daily Income Gate is frozen before the first result. A strategy passes only if all conditions hold across the combined fixed test years:
 - at least 250 eligible session days;
