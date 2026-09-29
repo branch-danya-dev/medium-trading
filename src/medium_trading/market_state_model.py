@@ -3,6 +3,7 @@ from collections import Counter
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
+from itertools import pairwise
 from statistics import mean
 
 from medium_trading.crypto_noise_filter import extract_btc_long_noise_samples
@@ -717,7 +718,7 @@ def _aggregate(
             continue
         if any(
             current.timestamp - previous.timestamp != timedelta(minutes=5)
-            for previous, current in zip(group, group[1:], strict=False)
+            for previous, current in pairwise(group)
         ):
             continue
         result.append(
@@ -887,7 +888,7 @@ def _require_contiguous(
     delta: timedelta,
     label: str,
 ) -> None:
-    for previous, current in zip(candles, candles[1:], strict=False):
+    for previous, current in pairwise(candles):
         if current.timestamp - previous.timestamp != delta:
             raise ValueError(
                 f"{label} history has a gap between "
