@@ -12,7 +12,7 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 - Market: spot FX.
 - Symbols: EUR/USD, GBP/USD, USD/JPY, AUD/USD.
 - Timeframes: 4h regime, 1h setup, 30m trigger.
-- First strategy: Trend Pullback.
+- Current strategy candidate: Volatility Breakout.
 - Starting equity model: USD 1,000.
 - Default risk: 0.5% of equity per trade.
 - Maximum combined open risk: 1.0% of equity.
@@ -22,8 +22,9 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 - OANDA v20 remains optional and must not become an MVP dependency.
 - One broker integration only when live execution is implemented.
 
-Trend Pullback is a baseline candidate, not a proven edge. Breakout is the next strategy candidate only
-after Trend Pullback is evaluated.
+Trend Pullback has been evaluated and is REJECTED: it was negative before costs on out-of-sample data across all four MVP pairs. Do not tune or revive it without an explicit new research task.
+
+Volatility Breakout is the current fixed baseline candidate. Its initial parameters are locked before the first evaluation: 20-bar H1 Donchian channel, 30m range expansion versus ATR14, 1.5 ATR stop, 4h directional range-half filter. Do not tune these parameters on out-of-sample results.
 
 ## Architecture rules
 
