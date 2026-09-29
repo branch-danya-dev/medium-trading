@@ -107,11 +107,16 @@ def run_backtest(
             continue
 
         risk_distance = abs(entry - signal.stop)
-        risk_pips = risk_distance / pip_size(symbol)
+        target = _target_price(signal, entry, risk_distance, config.target_r)
+        if not _entry_has_valid_target(signal, entry, target):
+            invalidated_before_entry += 1
+            index += 1
+            continue
+
         effective_cost_pips = (
             config.round_trip_cost_pips * config.cost_stress_multiplier
         )
-        expected_move_pips = config.target_r * risk_pips
+        expected_move_pips = abs(target - entry) / pip_size(symbol)
         if expected_move_pips / effective_cost_pips < config.minimum_cost_multiple:
             cost_rejections += 1
             index += 1
@@ -121,6 +126,7 @@ def run_backtest(
             signal=signal,
             symbol=symbol,
             entry=entry,
+            target=target,
             entry_index=entry_index,
             candles_30m=candles_30m,
             config=config,
@@ -191,22 +197,37 @@ def _entry_has_valid_stop(signal: Signal, entry: float) -> bool:
     return signal.stop > entry
 
 
+def _entry_has_valid_target(signal: Signal, entry: float, target: float) -> bool:
+    if signal.side is Side.LONG:
+        return target > entry
+    return target < entry
+
+
+def _target_price(
+    signal: Signal,
+    entry: float,
+    risk_distance: float,
+    target_r: float,
+) -> float:
+    if signal.target is not None:
+        return signal.target
+    if signal.side is Side.LONG:
+        return entry + target_r * risk_distance
+    return entry - target_r * risk_distance
+
+
 def _simulate_trade(
     *,
     signal: Signal,
     symbol: str,
     entry: float,
+    target: float,
     entry_index: int,
     candles_30m: tuple[Candle, ...],
     config: BacktestConfig,
     effective_cost_pips: float,
 ) -> tuple[BacktestTrade, int]:
     risk_distance = abs(entry - signal.stop)
-    target = (
-        entry + config.target_r * risk_distance
-        if signal.side is Side.LONG
-        else entry - config.target_r * risk_distance
-    )
     last_index = min(
         len(candles_30m) - 1,
         entry_index + config.max_holding_bars - 1,
