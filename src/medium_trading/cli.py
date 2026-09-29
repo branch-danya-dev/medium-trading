@@ -24,6 +24,7 @@ from medium_trading.daily_evaluation import (
 )
 from medium_trading.daily_evaluation import evaluation_payload as daily_evaluation_payload
 from medium_trading.data import import_dukascopy, load_candles, save_candles
+from medium_trading.data.bybit_download import download_m30 as download_bybit_m30
 from medium_trading.data.dukascopy_download import download_m30
 from medium_trading.data.oanda import OandaHistoryClient
 from medium_trading.direct_ml import (
@@ -88,6 +89,21 @@ def main() -> None:
     dukascopy_download.add_argument("--side", choices=("BID", "ASK"), default="BID")
     dukascopy_download.add_argument("--workers", type=int, default=4)
     dukascopy_download.add_argument("--output-dir", default="data")
+
+    bybit_download = subparsers.add_parser("download-bybit")
+    bybit_download.add_argument("--symbol", default="BTCUSDT")
+    bybit_download.add_argument(
+        "--category",
+        choices=("linear", "inverse", "spot"),
+        default="linear",
+    )
+    bybit_download.add_argument("--from", dest="start", required=True)
+    bybit_download.add_argument("--to", dest="end", required=True)
+    bybit_download.add_argument(
+        "--base-url",
+        default="https://api.bybit.com/v5/market/kline",
+    )
+    bybit_download.add_argument("--output-dir", default="data/bybit")
 
     dukascopy_import = subparsers.add_parser("import-dukascopy")
     dukascopy_import.add_argument("--symbol", required=True, help="Example: EUR/USD")
@@ -303,8 +319,9 @@ def main() -> None:
     btc_long_v1_1_corrected.add_argument(
         "--data",
         required=True,
-        help="BTC/USD M30 CSV, e.g. data/crypto/BTC_USD_M30.csv",
+        help="BTC M30 CSV, e.g. data/bybit/BTCUSDT_M30.csv",
     )
+    btc_long_v1_1_corrected.add_argument("--symbol", default="BTC/USD")
     btc_long_v1_1_corrected.add_argument(
         "--fee-bps-per-side",
         type=float,
@@ -326,6 +343,8 @@ def main() -> None:
     args = parser.parse_args()
     if args.command == "download-dukascopy":
         _download_dukascopy(args)
+    elif args.command == "download-bybit":
+        _download_bybit(args)
     elif args.command == "import-dukascopy":
         _import_dukascopy(args)
     elif args.command == "download-oanda":
@@ -382,6 +401,37 @@ def _download_dukascopy(args: argparse.Namespace) -> None:
             f"saved {len(result.candles)} M30 candles to {output} "
             f"({result.data_days} data days, {result.empty_days} empty days)"
         )
+
+
+def _download_bybit(args: argparse.Namespace) -> None:
+    start = date.fromisoformat(args.start)
+    end = date.fromisoformat(args.end)
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    print(
+        f"downloading Bybit {args.category} {args.symbol}: "
+        f"{start} -> {end} (M30)"
+    )
+
+    def progress(done: int, total: int) -> None:
+        if done == total or done % 10 == 0:
+            print(f"  {done}/{total} requests")
+
+    result = download_bybit_m30(
+        symbol=args.symbol,
+        category=args.category,
+        start=start,
+        end=end,
+        progress=progress,
+        base_url=args.base_url,
+    )
+    output = output_dir / f"{result.symbol}_M30.csv"
+    save_candles(output, result.candles)
+    print(
+        f"saved {len(result.candles)} strict M30 candles to {output} "
+        f"({result.request_count} requests, no missing intervals)"
+    )
 
 
 def _import_dukascopy(args: argparse.Namespace) -> None:
@@ -845,6 +895,7 @@ def _btc_long_v1_1_corrected_evaluate(args: argparse.Namespace) -> None:
     candles = load_candles(Path(args.data))
     evaluation = evaluate_btc_long_v1_1_corrected(
         candles=candles,
+        symbol=args.symbol,
         fee_bps_per_side=args.fee_bps_per_side,
         slippage_bps_per_side=args.slippage_bps_per_side,
         starting_equity=args.starting_equity,
