@@ -11,9 +11,9 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 
 - Research scope: multiple liquid markets, evaluated one strategy/market hypothesis at a time.
 - Legacy FX universe: EUR/USD, GBP/USD, USD/JPY, AUD/USD plus four external FX pairs used in validation.
-- Current market: US index CFDs, with USA500 baseline closed and USATECH in one final ORB variant.
+- Current market: Gold / XAU/USD.
 - Core data timeframe for the current candidate: 30m.
-- Current research candidate: final frozen USATECH Opening Range Breakout quality filter.
+- Current research candidate: frozen London-reference to New York breakout.
 - Starting equity model: USD 1,000.
 - Default risk: 0.5% of equity per trade.
 - Maximum combined open risk: 1.0% of equity.
@@ -33,7 +33,7 @@ Volatility Breakout has been evaluated and is REJECTED: it was negative before c
 
 The first frozen ML filter over Mean Reversion entries was useful diagnostically but did not make the 2026 forward period profitable: it reduced the loss materially while remaining negative. Do not tune that filter further on the inspected periods.
 
-The current research task is a frozen direct 4H ML opportunity model. It evaluates every completed 4H state rather than requiring a Mean Reversion setup. Two independent HistGradientBoostingRegressor models predict realized net R for a fixed LONG candidate and a fixed SHORT candidate. The higher prediction is traded only when it is above 0.0R; otherwise the decision is NO TRADE.
+A prior research task was a frozen direct 4H ML opportunity model. It evaluates every completed 4H state rather than requiring a Mean Reversion setup. Two independent HistGradientBoostingRegressor models predict realized net R for a fixed LONG candidate and a fixed SHORT candidate. The higher prediction is traded only when it is above 0.0R; otherwise the decision is NO TRADE.
 
 Direct-ML execution is fixed before the first historical evaluation: entry at the next M30 open, stop at 1.5 ATR14, target at 2.0 ATR14, maximum holding of 48 M30 bars (24 hours), the existing 8x cost gate, conservative same-bar stop priority, and the same modeled FX transaction costs.
 
@@ -61,7 +61,24 @@ Exactly one final USATECH modification is allowed. It keeps the same opening ran
 - modeled round-trip research cost remains frozen at 3.0 index price points for USATECH.IDX/USD;
 - fixed evaluation years remain 2023, 2024 and 2025.
 
-This is the final ORB attempt on US indices. If the USATECH quality-filter variant fails any Daily Income Gate condition, mark US-index ORB REJECTED and move to the next market hypothesis. Do not tune the 10% threshold, target, stop, holding period or costs after viewing the result.
+The final USATECH quality-filter variant failed the Daily Income Gate. US-index ORB is REJECTED and CLOSED. Do not tune or revive its threshold, target, stop, holding period or costs on the inspected datasets.
+
+The current frozen candidate is Gold / XAU/USD London-reference to New York breakout:
+- reference range: five complete M30 candles starting 08:00, 08:30, 09:00, 09:30 and 10:00 Europe/London, forming the 08:00-10:30 London range;
+- trading window: decisions from 08:30 through 11:00 America/New_York;
+- trigger: the first M30 close in that New York window above the London range high or below the London range low;
+- entry: next M30 open;
+- stop: opposite side of the London reference range;
+- target: 1.5R;
+- maximum holding: 6 M30 bars (3 hours);
+- maximum one breakout attempt per session;
+- if the complete five-bar London reference is unavailable, skip the session;
+- default risk remains 0.5% per trade;
+- XAU/USD pip size in the research engine is 0.01 USD;
+- modeled round-trip research cost is frozen at 80 pips = 0.80 USD price movement; 2x stress is 160 pips = 1.60 USD;
+- fixed evaluation years are 2023, 2024 and 2025. If the Daily Income Gate passes, 2026 is reserved for later temporal-forward confirmation.
+
+Do not tune the London range, New York window, target, stop, holding period or costs after viewing the baseline result. This gold hypothesis receives one frozen baseline plus at most one materially justified modification if the baseline is close but fails the gate.
 
 Daily Income Gate is frozen before the first result. A strategy passes only if all conditions hold across the combined fixed test years:
 - at least 250 eligible session days;
