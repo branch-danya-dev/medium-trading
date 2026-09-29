@@ -47,6 +47,8 @@ LAST_TEST_YEAR = 2025
 CLEAN_HORIZON_HOURS = 8
 LABEL_HORIZON_HOURS = 24
 CLEAN_TARGET_R = 1.0
+MOVE_TARGET_R = 2.0
+MOVE_HORIZON_HOURS = 24
 ECONOMIC_MIN_TARGET_TO_COST = 8.0
 PROBABILITY_THRESHOLD = 0.50
 
@@ -72,6 +74,8 @@ class NoiseSample:
     is_clean: bool
     expected_cost_r: float
     target_to_cost_ratio: float
+    move_class: str = "NO_MOVE"
+    has_real_move: bool = False
 
     @property
     def economic_pass(self) -> bool:
@@ -131,6 +135,56 @@ class NoiseFilterEvaluation:
     folds: tuple[NoiseFoldEvaluation, ...]
     combined_classification: ClassificationMetrics
     combined_class_distribution: dict[str, int]
+    combined_raw: TradeMetrics
+    combined_economic_gate: TradeMetrics
+    combined_economic_gate_2x_costs: TradeMetrics
+    combined_ml_filter: TradeMetrics
+    combined_ml_filter_2x_costs: TradeMetrics
+
+
+@dataclass(frozen=True, slots=True)
+class MoveClassificationMetrics:
+    candidates: int
+    predicted_move: int
+    actual_move: int
+    true_positive: int
+    false_positive: int
+    false_negative: int
+    true_negative: int
+    precision: float
+    recall: float
+    base_move_rate: float
+    precision_lift: float
+
+
+@dataclass(frozen=True, slots=True)
+class MoveFoldEvaluation:
+    test_year: int
+    train_samples: int
+    train_move_distribution: dict[str, int]
+    test_samples: int
+    economic_samples: int
+    selected_samples: int
+    test_move_distribution: dict[str, int]
+    classification: MoveClassificationMetrics
+    raw: TradeMetrics
+    economic_gate: TradeMetrics
+    economic_gate_2x_costs: TradeMetrics
+    ml_filter: TradeMetrics
+    ml_filter_2x_costs: TradeMetrics
+
+
+@dataclass(frozen=True, slots=True)
+class MoveFilterEvaluation:
+    feature_names: tuple[str, ...]
+    model_params: dict[str, object]
+    probability_threshold: float
+    move_target_r: float
+    move_horizon_hours: int
+    economic_min_target_to_cost: float
+    folds: tuple[MoveFoldEvaluation, ...]
+    combined_classification: MoveClassificationMetrics
+    combined_move_distribution: dict[str, int]
     combined_raw: TradeMetrics
     combined_economic_gate: TradeMetrics
     combined_economic_gate_2x_costs: TradeMetrics
@@ -198,6 +252,11 @@ def extract_btc_long_noise_samples(
             entry_index=entry_index,
             trade=trade,
         )
+        move_class = _move_outcome_class(
+            candles=candles,
+            entry_index=entry_index,
+            trade=trade,
+        )
         expected_cost_r = _expected_target_cost_r(
             trade=trade,
             fee_bps_per_side=fee_bps_per_side,
@@ -221,6 +280,8 @@ def extract_btc_long_noise_samples(
                 is_clean=outcome_class == "CLEAN",
                 expected_cost_r=expected_cost_r,
                 target_to_cost_ratio=target_to_cost_ratio,
+                move_class=move_class,
+                has_real_move=move_class != "NO_MOVE",
             )
         )
 
@@ -283,7 +344,7 @@ def evaluate_btc_long_noise_filter_v01(
             [sample.features for sample in train],
             labels,
         )
-        probabilities = _clean_probabilities(
+        probabilities = _positive_probabilities(
             model,
             [sample.features for sample in economic],
         )
@@ -357,6 +418,227 @@ def evaluate_btc_long_noise_filter_v01(
             cost_multiplier=2.0,
         ),
     )
+
+
+
+def evaluate_btc_long_move_filter_v02(
+    samples: Iterable[NoiseSample],
+    *,
+    first_test_year: int = FIRST_TEST_YEAR,
+    last_test_year: int = LAST_TEST_YEAR,
+) -> MoveFilterEvaluation:
+    """Feasibility test for predicting a real +2R move regardless of stop timing."""
+    classifier_type = _load_classifier()
+    all_samples = tuple(sorted(samples, key=lambda item: item.entry_time))
+    if not all_samples:
+        raise ValueError("move-filter evaluation requires samples")
+    if last_test_year < first_test_year:
+        raise ValueError("last_test_year cannot be before first_test_year")
+
+    folds: list[MoveFoldEvaluation] = []
+    combined_test: list[NoiseSample] = []
+    combined_economic: list[NoiseSample] = []
+    combined_selected: list[NoiseSample] = []
+    combined_truth: list[bool] = []
+    combined_predicted: list[bool] = []
+
+    for year in range(first_test_year, last_test_year + 1):
+        test_start = datetime(year, 1, 1, tzinfo=UTC)
+        test_end = datetime(year + 1, 1, 1, tzinfo=UTC)
+
+        train = tuple(
+            sample
+            for sample in all_samples
+            if sample.label_end_time <= test_start and sample.economic_pass
+        )
+        test = tuple(
+            sample
+            for sample in all_samples
+            if test_start <= sample.entry_time < test_end
+        )
+        if not test:
+            continue
+        if len(train) < 100:
+            raise ValueError(
+                f"not enough pre-{year} economic-pass samples: "
+                f"{len(train)}; need at least 100"
+            )
+
+        economic = tuple(sample for sample in test if sample.economic_pass)
+        if not economic:
+            raise ValueError(f"{year} has no economic-pass samples")
+
+        labels = [sample.has_real_move for sample in train]
+        if len(set(labels)) < 2:
+            raise ValueError(f"pre-{year} move labels contain only one class")
+
+        model = classifier_type(**MODEL_PARAMS)
+        model.fit(
+            [sample.features for sample in train],
+            labels,
+        )
+        probabilities = _positive_probabilities(
+            model,
+            [sample.features for sample in economic],
+        )
+        predicted = tuple(
+            bool(probability >= PROBABILITY_THRESHOLD)
+            for probability in probabilities
+        )
+        selected = tuple(
+            sample
+            for sample, keep in zip(economic, predicted, strict=True)
+            if keep
+        )
+        truth = tuple(sample.has_real_move for sample in economic)
+
+        folds.append(
+            MoveFoldEvaluation(
+                test_year=year,
+                train_samples=len(train),
+                train_move_distribution=_move_class_distribution(train),
+                test_samples=len(test),
+                economic_samples=len(economic),
+                selected_samples=len(selected),
+                test_move_distribution=_move_class_distribution(test),
+                classification=_move_classification_metrics(truth, predicted),
+                raw=_trade_metrics(test),
+                economic_gate=_trade_metrics(economic),
+                economic_gate_2x_costs=_trade_metrics(
+                    economic,
+                    cost_multiplier=2.0,
+                ),
+                ml_filter=_trade_metrics(selected),
+                ml_filter_2x_costs=_trade_metrics(
+                    selected,
+                    cost_multiplier=2.0,
+                ),
+            )
+        )
+
+        combined_test.extend(test)
+        combined_economic.extend(economic)
+        combined_selected.extend(selected)
+        combined_truth.extend(truth)
+        combined_predicted.extend(predicted)
+
+    if not folds:
+        raise ValueError("no move-filter walk-forward folds contained test samples")
+
+    return MoveFilterEvaluation(
+        feature_names=FEATURE_NAMES,
+        model_params=dict(MODEL_PARAMS),
+        probability_threshold=PROBABILITY_THRESHOLD,
+        move_target_r=MOVE_TARGET_R,
+        move_horizon_hours=MOVE_HORIZON_HOURS,
+        economic_min_target_to_cost=ECONOMIC_MIN_TARGET_TO_COST,
+        folds=tuple(folds),
+        combined_classification=_move_classification_metrics(
+            tuple(combined_truth),
+            tuple(combined_predicted),
+        ),
+        combined_move_distribution=_move_class_distribution(combined_test),
+        combined_raw=_trade_metrics(combined_test),
+        combined_economic_gate=_trade_metrics(combined_economic),
+        combined_economic_gate_2x_costs=_trade_metrics(
+            combined_economic,
+            cost_multiplier=2.0,
+        ),
+        combined_ml_filter=_trade_metrics(combined_selected),
+        combined_ml_filter_2x_costs=_trade_metrics(
+            combined_selected,
+            cost_multiplier=2.0,
+        ),
+    )
+
+
+def move_evaluation_payload(
+    evaluation: MoveFilterEvaluation,
+) -> dict[str, object]:
+    return {
+        "research_scope": {
+            "market": "Bybit BTCUSDT linear perpetual",
+            "side": "LONG_ONLY",
+            "strategy": "crypto-trend-long-v1.1-corrected",
+            "development_years": [2023, 2024, 2025],
+            "walk_forward_test_years": [
+                fold.test_year for fold in evaluation.folds
+            ],
+            "2026_used": False,
+            "candidate_stream": (
+                "fixed executed v1.1 baseline trades; filtering does not "
+                "introduce replacement candidates in v0.2"
+            ),
+        },
+        "label": {
+            "positive": (
+                f"+{evaluation.move_target_r:.1f}R reached within "
+                f"{evaluation.move_horizon_hours}h regardless of interim stop"
+            ),
+            "binary_target": "REAL_MOVE vs NO_MOVE",
+            "diagnostic_classes": {
+                "DIRECT_MOVE": "+2R reached before any stop touch",
+                "POST_STOP_MOVE": (
+                    "stop touched first, then +2R reached within 24h"
+                ),
+                "NO_MOVE": "+2R not reached within 24h",
+            },
+            "same_bar_rule": (
+                "if stop and +2R occur in the same M30 candle, classify "
+                "POST_STOP_MOVE for timing diagnostics; REAL_MOVE remains true"
+            ),
+        },
+        "economic_gate": {
+            "rule": "2R target distance / expected round-trip execution cost >= 8",
+            "minimum_target_to_cost": evaluation.economic_min_target_to_cost,
+            "equivalent_max_expected_cost_r": (
+                2.0 / evaluation.economic_min_target_to_cost
+            ),
+            "purpose": "deterministic economics; not an ML feature",
+        },
+        "feature_names": list(evaluation.feature_names),
+        "model": {
+            "type": "HistGradientBoostingClassifier",
+            "params": evaluation.model_params,
+            "probability_threshold": evaluation.probability_threshold,
+            "threshold_tuning": "none; fixed at 0.50 for v0.2 feasibility",
+            "feature_changes_vs_v0_1": "none",
+            "hyperparameter_changes_vs_v0_1": "none",
+        },
+        "folds": [
+            {
+                "test_year": fold.test_year,
+                "train_samples": fold.train_samples,
+                "train_move_distribution": fold.train_move_distribution,
+                "test_samples": fold.test_samples,
+                "economic_samples": fold.economic_samples,
+                "selected_samples": fold.selected_samples,
+                "test_move_distribution": fold.test_move_distribution,
+                "classification": asdict(fold.classification),
+                "raw": asdict(fold.raw),
+                "economic_gate": asdict(fold.economic_gate),
+                "economic_gate_2x_costs": asdict(
+                    fold.economic_gate_2x_costs
+                ),
+                "ml_filter": asdict(fold.ml_filter),
+                "ml_filter_2x_costs": asdict(fold.ml_filter_2x_costs),
+            }
+            for fold in evaluation.folds
+        ],
+        "combined": {
+            "move_distribution": evaluation.combined_move_distribution,
+            "classification": asdict(evaluation.combined_classification),
+            "raw": asdict(evaluation.combined_raw),
+            "economic_gate": asdict(evaluation.combined_economic_gate),
+            "economic_gate_2x_costs": asdict(
+                evaluation.combined_economic_gate_2x_costs
+            ),
+            "ml_filter": asdict(evaluation.combined_ml_filter),
+            "ml_filter_2x_costs": asdict(
+                evaluation.combined_ml_filter_2x_costs
+            ),
+        },
+    }
 
 
 def evaluation_payload(
@@ -536,6 +818,29 @@ def _outcome_class(
     return "NOISE"
 
 
+
+def _move_outcome_class(
+    *,
+    candles: tuple[Candle, ...],
+    entry_index: int,
+    trade: BacktestTrade,
+) -> str:
+    risk_distance = trade.entry - trade.stop
+    target = trade.entry + MOVE_TARGET_R * risk_distance
+    label_bars = MOVE_HORIZON_HOURS * 2
+    horizon = candles[entry_index : entry_index + label_bars]
+    adverse_seen = False
+
+    for candle in horizon:
+        # Keep conservative stop-first timing only for diagnostics.
+        if candle.low <= trade.stop:
+            adverse_seen = True
+        if candle.high >= target:
+            return "POST_STOP_MOVE" if adverse_seen else "DIRECT_MOVE"
+
+    return "NO_MOVE"
+
+
 def _expected_target_cost_r(
     *,
     trade: BacktestTrade,
@@ -645,6 +950,74 @@ def _classification_metrics(
     )
 
 
+
+def _move_classification_metrics(
+    truth: tuple[bool, ...],
+    predicted: tuple[bool, ...],
+) -> MoveClassificationMetrics:
+    if len(truth) != len(predicted):
+        raise ValueError("move classification arrays must have equal length")
+
+    true_positive = int(
+        sum(
+            bool(actual) and bool(guess)
+            for actual, guess in zip(truth, predicted, strict=True)
+        )
+    )
+    false_positive = int(
+        sum(
+            (not bool(actual)) and bool(guess)
+            for actual, guess in zip(truth, predicted, strict=True)
+        )
+    )
+    false_negative = int(
+        sum(
+            bool(actual) and (not bool(guess))
+            for actual, guess in zip(truth, predicted, strict=True)
+        )
+    )
+    true_negative = int(
+        sum(
+            (not bool(actual)) and (not bool(guess))
+            for actual, guess in zip(truth, predicted, strict=True)
+        )
+    )
+
+    predicted_move = true_positive + false_positive
+    actual_move = true_positive + false_negative
+    candidates = len(truth)
+    precision = true_positive / predicted_move if predicted_move else 0.0
+    recall = true_positive / actual_move if actual_move else 0.0
+    base_move_rate = actual_move / candidates if candidates else 0.0
+    precision_lift = (
+        precision / base_move_rate
+        if base_move_rate > 0
+        else 0.0
+    )
+
+    return MoveClassificationMetrics(
+        candidates=candidates,
+        predicted_move=predicted_move,
+        actual_move=actual_move,
+        true_positive=true_positive,
+        false_positive=false_positive,
+        false_negative=false_negative,
+        true_negative=true_negative,
+        precision=float(precision),
+        recall=float(recall),
+        base_move_rate=float(base_move_rate),
+        precision_lift=float(precision_lift),
+    )
+
+
+def _move_class_distribution(samples: Iterable[NoiseSample]) -> dict[str, int]:
+    counts = Counter(sample.move_class for sample in samples)
+    return {
+        class_name: counts.get(class_name, 0)
+        for class_name in ("DIRECT_MOVE", "POST_STOP_MOVE", "NO_MOVE")
+    }
+
+
 def _class_distribution(samples: Iterable[NoiseSample]) -> dict[str, int]:
     counts = Counter(sample.outcome_class for sample in samples)
     return {
@@ -681,7 +1054,7 @@ def _efficiency_ratio(closes: list[float]) -> float:
     return abs(closes[-1] - closes[0]) / path
 
 
-def _clean_probabilities(model, features: list[tuple[float, ...]]):
+def _positive_probabilities(model, features: list[tuple[float, ...]]):
     probabilities = model.predict_proba(features)
     classes = list(model.classes_)
     clean_index = classes.index(True)
