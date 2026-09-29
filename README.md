@@ -9,7 +9,7 @@ The first version is intentionally small:
 - research markets are tested separately rather than forcing one universal strategy;
 - legacy FX research remains reproducible;
 - current market: Crypto, starting with BTC/USD;
-- current candidate: frozen BTC/USD rolling intraday momentum continuation;
+- current candidate: frozen BTC/USD Trend LONG v1 diagnostic baseline;
 - daily-income consistency is now a primary evaluation target;
 - starting equity model: USD 1,000;
 - default risk: 0.5% per trade, 1.0% maximum combined open risk;
@@ -507,10 +507,36 @@ Run the frozen 2023-2025 momentum-continuation baseline:
       --cost BTC/USD=50 ^
       --json artifacts/btc_intraday_momentum_continuation_eval.json
 
-Do not tune the 4-hour trend window, 0.75 ATR threshold, 5-of-8 directional rule, 50% retracement limit,
-02:00-22:00 decision window, 1.5R target, 4-hour holding period or 50 USD cost after reading the result.
+That mixed-direction momentum-continuation baseline failed and is rejected.
 
-The daily gate is strict and conjunctive: at least 250 eligible sessions, at least 300 trades, >=70%
+Research now restarts with one narrow basket: BTC/USD LONG only. BTC Trend LONG v1 uses completed 4H bars
+for regime context and M30 for execution. The latest 4H close must be above EMA20 and EMA20 must be above
+its value three completed 4H bars earlier. A bearish M30 pullback followed immediately by a bullish M30
+close above the pullback high creates a LONG signal. Entry is next M30 open, stop is the pullback low,
+target is 2.0R and maximum holding is 24 hours.
+
+This baseline has no ML and no noise filter. The historical diagnostic intentionally disables the old 8x
+expected-move cost gate so small/noisy setups remain visible, while the frozen USD 50 round-trip modeled
+cost is still deducted from every trade. Starting equity is USD 10,000 and risk is 0.5% per trade.
+
+Run the fixed 2023-2025 BTC LONG diagnostic:
+
+    medium-trading btc-long-evaluate ^
+      --data data/crypto/BTC_USD_M30.csv ^
+      --cost-usd 50 ^
+      --starting-equity 10000 ^
+      --risk 0.005 ^
+      --json artifacts/btc_trend_long_v1.json
+
+The JSON includes every trade plus 24-hour MFE/MAE, post-exit favorable movement and +0.5R/+1R/+2R/+3R
+reach diagnostics. This baseline is not judged by the old Daily Income Gate. A small net loss can remain
+research-worthy when the gross LONG stream is positive and diagnostics identify a repeatable noise/cost
+problem. Negative gross expectancy across the inspected folds is evidence against adding ML as a rescue.
+
+Do not tune EMA20, the three-4H-bar EMA slope comparison, M30 pullback/confirmation rule, 2.0R target,
+24-hour holding period or USD 50 modeled cost after reading the first result.
+
+The legacy daily gate remains strict and conjunctive for the older daily-income studies: at least 250 eligible sessions, at least 300 trades, >=70%
 active-session rate, >=45% profitable active days, positive average net R/session, net PF >=1.15,
 2x-cost PF >1.00, at least 2 positive yearly folds, >=60% positive months, worst day no worse than -2R,
 losing-day streak no longer than 8 sessions, and no single best day contributing 15% or more of total
