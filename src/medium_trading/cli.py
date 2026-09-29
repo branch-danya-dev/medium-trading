@@ -11,7 +11,10 @@ from medium_trading.config import Settings
 from medium_trading.data import import_dukascopy, load_candles, save_candles
 from medium_trading.data.dukascopy_download import download_m30
 from medium_trading.data.oanda import OandaHistoryClient
-from medium_trading.strategy import TrendPullbackStrategy
+from medium_trading.strategy import TrendPullbackStrategy, VolatilityBreakoutStrategy
+from medium_trading.strategy.base import Strategy
+
+_STRATEGY_CHOICES = ("trend-pullback", "volatility-breakout")
 
 
 def main() -> None:
@@ -45,6 +48,11 @@ def main() -> None:
     backtest = subparsers.add_parser("backtest")
     backtest.add_argument("--symbol", required=True, help="Example: EUR/USD")
     backtest.add_argument("--data", required=True)
+    backtest.add_argument(
+        "--strategy",
+        choices=_STRATEGY_CHOICES,
+        default="volatility-breakout",
+    )
     backtest.add_argument("--round-trip-cost-pips", type=float, default=1.2)
     backtest.add_argument("--cost-stress", type=float, default=1.0)
     backtest.add_argument("--risk", type=float, default=0.005)
@@ -62,6 +70,11 @@ def main() -> None:
         action="append",
         default=[],
         help="Optional repeatable SYMBOL=PIPS override",
+    )
+    evaluate.add_argument(
+        "--strategy",
+        choices=_STRATEGY_CHOICES,
+        default="volatility-breakout",
     )
     evaluate.add_argument("--default-cost-pips", type=float, default=1.2)
     evaluate.add_argument("--risk", type=float, default=0.005)
@@ -154,7 +167,7 @@ def _backtest(args: argparse.Namespace) -> None:
     report = run_backtest(
         symbol=args.symbol,
         candles_30m=candles,
-        strategy=TrendPullbackStrategy(),
+        strategy=_strategy_from_name(args.strategy),
         config=BacktestConfig(
             risk_fraction=args.risk,
             target_r=args.target_r,
@@ -178,7 +191,7 @@ def _evaluate(args: argparse.Namespace) -> None:
         evaluation = evaluate_symbol(
             symbol=symbol,
             candles=load_candles(filename),
-            strategy=TrendPullbackStrategy(),
+            strategy=_strategy_from_name(args.strategy),
             config=BacktestConfig(
                 risk_fraction=args.risk,
                 target_r=args.target_r,
@@ -202,6 +215,14 @@ def _evaluate(args: argparse.Namespace) -> None:
             encoding="utf-8",
         )
         print(f"wrote evaluation report to {output}")
+
+
+def _strategy_from_name(name: str) -> Strategy:
+    if name == "trend-pullback":
+        return TrendPullbackStrategy()
+    if name == "volatility-breakout":
+        return VolatilityBreakoutStrategy()
+    raise ValueError(f"unsupported strategy: {name}")
 
 
 def _print_report(report: BacktestReport) -> None:
