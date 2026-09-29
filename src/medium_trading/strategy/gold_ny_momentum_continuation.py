@@ -44,7 +44,7 @@ class GoldNewYorkMomentumContinuationStrategy:
         if impulse is None:
             return None
 
-        side, impulse_start, impulse_end, midpoint, impulse_last_timestamp = impulse
+        side, _impulse_start, impulse_end, midpoint, impulse_last_timestamp = impulse
         post_impulse = tuple(
             candle
             for candle in context.candles_30m
