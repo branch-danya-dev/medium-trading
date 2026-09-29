@@ -1,6 +1,7 @@
 from bisect import bisect_right
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
+from itertools import pairwise
 
 from medium_trading.domain import Candle, Side, Signal, StrategyContext
 from medium_trading.strategy.base import Strategy
@@ -236,7 +237,7 @@ def run_backtest(
 def _is_contiguous_m30(candles: tuple[Candle, ...]) -> bool:
     return all(
         current.timestamp - previous.timestamp == timedelta(minutes=30)
-        for previous, current in zip(candles, candles[1:], strict=False)
+        for previous, current in pairwise(candles)
     )
 
 
