@@ -255,7 +255,7 @@ def _fetch_day(symbol: str, side: str, requested_date: date) -> Mapping[str, obj
                     f"HTTP {exc.code} for {requested_date.isoformat()}"
                 ) from exc
             error: Exception = exc
-        except (urllib.error.URLError, TimeoutError) as exc:
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
             error = exc
 
         if attempt < len(_RETRY_DELAYS):
