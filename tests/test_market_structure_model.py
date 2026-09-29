@@ -4,8 +4,8 @@ from datetime import UTC, datetime, timedelta
 from medium_trading.domain import Candle
 from medium_trading.market_structure_model import (
     FEATURE_NAMES,
-    StructureContext,
     StructuralStateSample,
+    StructureContext,
     _structural_outcome_class,
     evaluate_structural_state_v02,
     evaluation_payload,
