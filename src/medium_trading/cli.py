@@ -64,6 +64,13 @@ from medium_trading.market_state_model import (
 from medium_trading.market_state_model import (
     evaluation_payload as market_state_payload,
 )
+from medium_trading.market_structure_model import (
+    evaluate_structural_state_v02,
+    extract_structural_state_samples,
+)
+from medium_trading.market_structure_model import (
+    evaluation_payload as market_structure_payload,
+)
 from medium_trading.ml_filter import (
     evaluate_mean_reversion_ml_filter,
     evaluate_mean_reversion_ml_forward,
@@ -426,6 +433,29 @@ def main() -> None:
     market_state.add_argument("--risk", type=float, default=0.005)
     market_state.add_argument("--json", dest="json_output")
 
+    market_structure = subparsers.add_parser(
+        "btc-market-structure-v0-2-evaluate"
+    )
+    market_structure.add_argument("--m30", required=True)
+    market_structure.add_argument("--m5", required=True)
+    market_structure.add_argument("--open-interest", required=True)
+    market_structure.add_argument("--account-ratio", required=True)
+    market_structure.add_argument("--funding", required=True)
+    market_structure.add_argument("--symbol", default="BTCUSDT")
+    market_structure.add_argument("--fee-bps-per-side", type=float, default=5.5)
+    market_structure.add_argument(
+        "--slippage-bps-per-side",
+        type=float,
+        default=2.0,
+    )
+    market_structure.add_argument(
+        "--starting-equity",
+        type=float,
+        default=10_000.0,
+    )
+    market_structure.add_argument("--risk", type=float, default=0.005)
+    market_structure.add_argument("--json", dest="json_output")
+
     args = parser.parse_args()
     if args.command == "download-dukascopy":
         _download_dukascopy(args)
@@ -465,6 +495,8 @@ def main() -> None:
         _btc_long_move_ml_v0_2_evaluate(args)
     elif args.command == "btc-market-state-v0-1-evaluate":
         _btc_market_state_v0_1_evaluate(args)
+    elif args.command == "btc-market-structure-v0-2-evaluate":
+        _btc_market_structure_v0_2_evaluate(args)
 
 
 def _download_dukascopy(args: argparse.Namespace) -> None:
@@ -1240,6 +1272,56 @@ def _btc_market_state_v0_1_evaluate(args: argparse.Namespace) -> None:
             encoding="utf-8",
         )
         print(f"wrote Market State Model v0.1 report to {output}")
+
+
+def _btc_market_structure_v0_2_evaluate(args: argparse.Namespace) -> None:
+    candles_30m = load_candles(Path(args.m30))
+    candles_5m = load_candles(Path(args.m5))
+    open_interest = load_open_interest(Path(args.open_interest))
+    account_ratio = load_account_ratio(Path(args.account_ratio))
+    funding = load_funding(Path(args.funding))
+
+    samples = extract_structural_state_samples(
+        candles_30m=candles_30m,
+        candles_5m=candles_5m,
+        open_interest=open_interest,
+        account_ratio=account_ratio,
+        funding=funding,
+        symbol=args.symbol,
+        fee_bps_per_side=args.fee_bps_per_side,
+        slippage_bps_per_side=args.slippage_bps_per_side,
+        starting_equity=args.starting_equity,
+        risk_fraction=args.risk,
+    )
+    evaluation = evaluate_structural_state_v02(samples)
+    payload = market_structure_payload(evaluation)
+    combined = payload["combined"]
+    classification = combined["classification"]
+
+    print("BTCUSDT Market Structure Model v0.2")
+    print(
+        f"samples={combined['test_samples']} "
+        f"clear={combined['clear_samples']} "
+        f"excluded={combined['excluded_samples']} "
+        f"reversal_base={classification['base_reversal_rate']:.1%}"
+    )
+    print(
+        f"precision={classification['precision']:.1%} "
+        f"recall={classification['recall']:.1%} "
+        f"lift={classification['precision_lift']:.2f}x "
+        f"AUC={classification['roc_auc']:.3f} "
+        f"Brier={classification['brier_score']:.3f}"
+    )
+    print(f"state distribution={combined['state_distribution']}")
+
+    if args.json_output:
+        output = Path(args.json_output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(
+            json.dumps(payload, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        print(f"wrote Market Structure Model v0.2 report to {output}")
 
 
 def _strategy_from_name(name: str) -> Strategy:
