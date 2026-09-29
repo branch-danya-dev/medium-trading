@@ -11,10 +11,10 @@ from medium_trading.config import Settings
 from medium_trading.data import import_dukascopy, load_candles, save_candles
 from medium_trading.data.dukascopy_download import download_m30
 from medium_trading.data.oanda import OandaHistoryClient
-from medium_trading.strategy import TrendPullbackStrategy, VolatilityBreakoutStrategy
+from medium_trading.strategy import (\n    TimeSeriesMomentumStrategy,\n    TrendPullbackStrategy,\n    VolatilityBreakoutStrategy,\n)
 from medium_trading.strategy.base import Strategy
 
-_STRATEGY_CHOICES = ("trend-pullback", "volatility-breakout")
+_STRATEGY_CHOICES = ("trend-pullback", "volatility-breakout", "time-series-momentum")
 
 
 def main() -> None:
@@ -164,13 +164,19 @@ def _download_oanda(args: argparse.Namespace) -> None:
 
 def _backtest(args: argparse.Namespace) -> None:
     candles = load_candles(Path(args.data))
+    target_r, max_holding_bars = _strategy_backtest_defaults(args.strategy)
     report = run_backtest(
         symbol=args.symbol,
         candles_30m=candles,
         strategy=_strategy_from_name(args.strategy),
         config=BacktestConfig(
             risk_fraction=args.risk,
-            target_r=args.target_r,
+            target_r=args.target_r if args.target_r is not None else target_r,
+            max_holding_bars=(
+                args.max_holding_bars
+                if args.max_holding_bars is not None
+                else max_holding_bars
+            ),
             round_trip_cost_pips=args.round_trip_cost_pips,
             cost_stress_multiplier=args.cost_stress,
         ),
@@ -185,6 +191,7 @@ def _evaluate(args: argparse.Namespace) -> None:
         for symbol, value in _parse_assignments(args.cost, "cost").items()
     }
 
+    target_r, max_holding_bars = _strategy_backtest_defaults(args.strategy)
     evaluations: list[SymbolEvaluation] = []
     for symbol, filename in datasets.items():
         cost_pips = costs.get(symbol, args.default_cost_pips)
@@ -194,7 +201,12 @@ def _evaluate(args: argparse.Namespace) -> None:
             strategy=_strategy_from_name(args.strategy),
             config=BacktestConfig(
                 risk_fraction=args.risk,
-                target_r=args.target_r,
+                target_r=args.target_r if args.target_r is not None else target_r,
+                max_holding_bars=(
+                    args.max_holding_bars
+                    if args.max_holding_bars is not None
+                    else max_holding_bars
+                ),
                 round_trip_cost_pips=cost_pips,
             ),
             train_fraction=args.train_fraction,
@@ -222,7 +234,15 @@ def _strategy_from_name(name: str) -> Strategy:
         return TrendPullbackStrategy()
     if name == "volatility-breakout":
         return VolatilityBreakoutStrategy()
+    if name == "time-series-momentum":
+        return TimeSeriesMomentumStrategy()
     raise ValueError(f"unsupported strategy: {name}")
+
+
+def _strategy_backtest_defaults(name: str) -> tuple[float, int]:
+    if name == "time-series-momentum":
+        return 3.0, 240
+    return 2.0, 48
 
 
 def _print_report(report: BacktestReport) -> None:
