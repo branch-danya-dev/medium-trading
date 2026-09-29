@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
 from medium_trading.domain import Candle, Side, StrategyContext
-from medium_trading.strategy import CryptoTrendLongStrategy
+from medium_trading.strategy import CryptoTrendLongStrategy, CryptoTrendLongV11Strategy
 
 
 def _bar(
@@ -100,3 +100,33 @@ def test_requires_confirmation_close_above_pullback_high() -> None:
         )
         is None
     )
+
+
+
+def test_v1_1_adds_m30_atr_stop_floor_without_changing_long_setup() -> None:
+    context = _context()
+    extra_start = context.candles_30m[0].timestamp - timedelta(minutes=30 * 13)
+    warmup = tuple(
+        _bar(
+            extra_start + timedelta(minutes=30 * index),
+            open_=99_900,
+            high=100_000,
+            low=99_800,
+            close=99_900,
+        )
+        for index in range(13)
+    )
+    context = StrategyContext(
+        symbol=context.symbol,
+        candles_4h=context.candles_4h,
+        candles_1h=(),
+        candles_30m=warmup + context.candles_30m,
+    )
+
+    signal = CryptoTrendLongV11Strategy().evaluate(context)
+
+    assert signal is not None
+    assert signal.side is Side.LONG
+    assert signal.stop == 99_700
+    assert signal.minimum_stop_distance is not None
+    assert signal.minimum_stop_distance > 0
