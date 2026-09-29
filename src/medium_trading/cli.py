@@ -37,6 +37,7 @@ from medium_trading.ml_filter import evaluation_payload as ml_evaluation_payload
 from medium_trading.ml_filter import forward_evaluation_payload as ml_forward_payload
 from medium_trading.strategy import (
     CryptoDailyVolatilityExpansionStrategy,
+    CryptoIntradayMomentumContinuationStrategy,
     GoldLondonNewYorkBreakoutStrategy,
     GoldNewYorkExhaustionReversalStrategy,
     GoldNewYorkMomentumContinuationStrategy,
@@ -60,6 +61,7 @@ _STRATEGY_CHOICES = (
     "gold-ny-momentum-continuation",
     "gold-ny-exhaustion-reversal",
     "crypto-daily-volatility-expansion",
+    "crypto-intraday-momentum-continuation",
 )
 
 
@@ -258,6 +260,7 @@ def main() -> None:
             "gold-ny-momentum-continuation",
             "gold-ny-exhaustion-reversal",
             "crypto-daily-volatility-expansion",
+            "crypto-intraday-momentum-continuation",
         ),
         default="opening-range-breakout",
     )
@@ -719,6 +722,8 @@ def _strategy_from_name(name: str) -> Strategy:
         return GoldNewYorkExhaustionReversalStrategy()
     if name == "crypto-daily-volatility-expansion":
         return CryptoDailyVolatilityExpansionStrategy()
+    if name == "crypto-intraday-momentum-continuation":
+        return CryptoIntradayMomentumContinuationStrategy()
     raise ValueError(f"unsupported strategy: {name}")
 
 
@@ -736,7 +741,10 @@ def _strategy_backtest_defaults(name: str) -> tuple[float, int]:
         return 1.5, 6
     if name == "gold-ny-exhaustion-reversal":
         return 1.25, 4
-    if name == "crypto-daily-volatility-expansion":
+    if name in {
+        "crypto-daily-volatility-expansion",
+        "crypto-intraday-momentum-continuation",
+    }:
         return 1.5, 8
     return 2.0, 48
 
