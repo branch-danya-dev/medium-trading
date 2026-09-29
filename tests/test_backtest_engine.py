@@ -49,10 +49,12 @@ class OneShotStrategy:
         *,
         side: Side = Side.LONG,
         stop: float = 1.0990,
+        target: float | None = None,
         trigger_length: int = 16,
     ) -> None:
         self.side = side
         self.stop = stop
+        self.target = target
         self.trigger_length = trigger_length
 
     def evaluate(self, context: StrategyContext) -> Signal | None:
@@ -66,6 +68,7 @@ class OneShotStrategy:
             confidence=1.0,
             strategy=self.name,
             reasons=("test",),
+            target=self.target,
         )
 
 
@@ -253,3 +256,46 @@ def test_same_bar_stop_and_target_assumes_stop_first() -> None:
     assert len(report.trades) == 1
     assert report.trades[0].exit_reason == "stop"
     assert report.trades[0].gross_r == pytest.approx(-1.0)
+
+
+def test_explicit_strategy_target_overrides_configured_r_multiple() -> None:
+    candles = [_candle(index) for index in range(20)]
+    candles[16] = _candle(
+        16,
+        open_=1.1000,
+        high=1.1009,
+        low=1.0995,
+        close=1.1008,
+    )
+
+    report = run_backtest(
+        symbol="EUR/USD",
+        candles_30m=tuple(candles),
+        strategy=OneShotStrategy(target=1.1008),
+        config=BacktestConfig(
+            target_r=5.0,
+            round_trip_cost_pips=1.0,
+            minimum_cost_multiple=8.0,
+        ),
+    )
+
+    assert len(report.trades) == 1
+    trade = report.trades[0]
+    assert trade.exit_reason == "target"
+    assert trade.exit == pytest.approx(1.1008)
+    assert trade.gross_r == pytest.approx(0.8)
+
+
+def test_signal_is_skipped_if_explicit_target_is_already_behind_entry() -> None:
+    candles = tuple(_candle(index) for index in range(20))
+
+    report = run_backtest(
+        symbol="EUR/USD",
+        candles_30m=candles,
+        strategy=OneShotStrategy(target=1.0999),
+        config=BacktestConfig(round_trip_cost_pips=1.0),
+    )
+
+    assert report.signal_count == 1
+    assert report.invalidated_before_entry == 1
+    assert not report.trades
