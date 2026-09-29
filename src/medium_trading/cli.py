@@ -16,6 +16,11 @@ from medium_trading.config import Settings
 from medium_trading.data import import_dukascopy, load_candles, save_candles
 from medium_trading.data.dukascopy_download import download_m30
 from medium_trading.data.oanda import OandaHistoryClient
+from medium_trading.daily_evaluation import (
+    DailyStrategyEvaluation,
+    evaluate_daily_strategy,
+)
+from medium_trading.daily_evaluation import evaluation_payload as daily_evaluation_payload
 from medium_trading.direct_ml import (
     evaluate_direct_ml_final,
     evaluate_direct_ml_opportunities,
@@ -32,6 +37,7 @@ from medium_trading.ml_filter import evaluation_payload as ml_evaluation_payload
 from medium_trading.ml_filter import forward_evaluation_payload as ml_forward_payload
 from medium_trading.strategy import (
     MeanReversionStrategy,
+    OpeningRangeBreakoutStrategy,
     TimeSeriesMomentumStrategy,
     TrendPullbackStrategy,
     VolatilityBreakoutStrategy,
@@ -43,6 +49,7 @@ _STRATEGY_CHOICES = (
     "volatility-breakout",
     "time-series-momentum",
     "mean-reversion",
+    "opening-range-breakout",
 )
 
 
@@ -216,6 +223,28 @@ def main() -> None:
     direct_ml_final.add_argument("--risk", type=float, default=0.005)
     direct_ml_final.add_argument("--json", dest="json_output")
 
+    daily_evaluate = subparsers.add_parser("daily-evaluate")
+    daily_evaluate.add_argument(
+        "--dataset",
+        action="append",
+        required=True,
+        help="Repeatable SYMBOL=CSV for daily-income research",
+    )
+    daily_evaluate.add_argument(
+        "--cost",
+        action="append",
+        default=[],
+        help="Repeatable SYMBOL=COST; FX uses pips, index CFDs use index price points",
+    )
+    daily_evaluate.add_argument(
+        "--strategy",
+        choices=("opening-range-breakout",),
+        default="opening-range-breakout",
+    )
+    daily_evaluate.add_argument("--default-cost", type=float, default=1.0)
+    daily_evaluate.add_argument("--risk", type=float, default=0.005)
+    daily_evaluate.add_argument("--json", dest="json_output")
+
     args = parser.parse_args()
     if args.command == "download-dukascopy":
         _download_dukascopy(args)
@@ -237,6 +266,8 @@ def main() -> None:
         _direct_ml_evaluate(args)
     elif args.command == "direct-ml-final-evaluate":
         _direct_ml_final_evaluate(args)
+    elif args.command == "daily-evaluate":
+        _daily_evaluate(args)
 
 
 def _download_dukascopy(args: argparse.Namespace) -> None:
@@ -604,6 +635,44 @@ def _direct_ml_final_evaluate(args: argparse.Namespace) -> None:
         print(f"wrote final direct ML evaluation report to {output}")
 
 
+def _daily_evaluate(args: argparse.Namespace) -> None:
+    datasets = _parse_assignments(args.dataset, "dataset")
+    costs = {
+        symbol: float(value)
+        for symbol, value in _parse_assignments(args.cost, "cost").items()
+    }
+    target_r, max_holding_bars = _strategy_backtest_defaults(args.strategy)
+
+    evaluations: list[DailyStrategyEvaluation] = []
+    for symbol, filename in datasets.items():
+        evaluation = evaluate_daily_strategy(
+            symbol=symbol,
+            candles=load_candles(filename),
+            strategy=_strategy_from_name(args.strategy),
+            config=BacktestConfig(
+                risk_fraction=args.risk,
+                target_r=target_r,
+                max_holding_bars=max_holding_bars,
+                round_trip_cost_pips=costs.get(symbol, args.default_cost),
+            ),
+        )
+        evaluations.append(evaluation)
+
+    _print_daily_evaluations(evaluations)
+    if args.json_output:
+        output = Path(args.json_output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(
+            json.dumps(
+                [daily_evaluation_payload(item) for item in evaluations],
+                indent=2,
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        print(f"wrote daily evaluation report to {output}")
+
+
 def _strategy_from_name(name: str) -> Strategy:
     if name == "trend-pullback":
         return TrendPullbackStrategy()
@@ -613,6 +682,8 @@ def _strategy_from_name(name: str) -> Strategy:
         return TimeSeriesMomentumStrategy()
     if name == "mean-reversion":
         return MeanReversionStrategy()
+    if name == "opening-range-breakout":
+        return OpeningRangeBreakoutStrategy()
     raise ValueError(f"unsupported strategy: {name}")
 
 
@@ -621,7 +692,53 @@ def _strategy_backtest_defaults(name: str) -> tuple[float, int]:
         return 3.0, 240
     if name == "mean-reversion":
         return 2.0, 192
+    if name == "opening-range-breakout":
+        return 1.5, 6
     return 2.0, 48
+
+
+def _print_daily_evaluations(
+    evaluations: list[DailyStrategyEvaluation],
+) -> None:
+    header = (
+        f"{'symbol':<18} {'year':<8} {'days':>6} {'active':>8} {'trades':>7} "
+        f"{'avgR/day':>9} {'netR':>9} {'gPF':>7} {'nPF':>7} {'2xPF':>7}"
+    )
+    print(header)
+    print("-" * len(header))
+
+    for evaluation in evaluations:
+        stressed_by_year = {
+            item.year: item.stressed_2x
+            for item in evaluation.years
+        }
+        for item in evaluation.years:
+            stressed = stressed_by_year[item.year]
+            print(
+                f"{evaluation.symbol:<18} {item.year:<8} "
+                f"{item.ordinary.session_days:>6} "
+                f"{item.ordinary.active_day_rate:>7.1%} "
+                f"{item.ordinary.trades:>7} "
+                f"{item.ordinary.average_net_r_per_session:>9.3f} "
+                f"{item.ordinary.net_r:>9.2f} "
+                f"{item.ordinary.gross_profit_factor:>7.2f} "
+                f"{item.ordinary.profit_factor:>7.2f} "
+                f"{stressed.profit_factor:>7.2f}"
+            )
+
+        status = "PASS" if evaluation.passes_gate else "REJECT"
+        print(
+            f"{evaluation.symbol:<18} {'combined':<8} "
+            f"{evaluation.combined.session_days:>6} "
+            f"{evaluation.combined.active_day_rate:>7.1%} "
+            f"{evaluation.combined.trades:>7} "
+            f"{evaluation.combined.average_net_r_per_session:>9.3f} "
+            f"{evaluation.combined.net_r:>9.2f} "
+            f"{evaluation.combined.gross_profit_factor:>7.2f} "
+            f"{evaluation.combined.profit_factor:>7.2f} "
+            f"{evaluation.combined_2x.profit_factor:>7.2f} "
+            f"gate={status}"
+        )
 
 
 def _print_report(report: BacktestReport) -> None:
