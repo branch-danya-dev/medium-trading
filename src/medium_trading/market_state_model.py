@@ -3,7 +3,6 @@ from collections import Counter
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
-from math import inf
 from statistics import mean
 
 from medium_trading.crypto_noise_filter import extract_btc_long_noise_samples
@@ -206,6 +205,10 @@ def extract_market_state_samples(
         snapshot_time = trade.entry_time + timedelta(minutes=SNAPSHOT_MINUTES)
 
         while snapshot_time <= exit_limit:
+            if snapshot_time + timedelta(hours=LABEL_HORIZON_HOURS) > (
+                candles_5m[-1].timestamp + timedelta(minutes=5)
+            ):
+                break
             end_index = bisect_left(m5_times, snapshot_time)
             if end_index <= entry_index:
                 snapshot_time += timedelta(minutes=SNAPSHOT_MINUTES)
@@ -232,6 +235,7 @@ def extract_market_state_samples(
             features = _features(
                 snapshot_time=snapshot_time,
                 snapshot_price=price,
+                trade_entry_time=trade.entry_time,
                 trade_entry=trade.entry,
                 trade_stop=trade.stop,
                 risk_distance=risk_distance,
@@ -483,6 +487,7 @@ def _features(
     *,
     snapshot_time: datetime,
     snapshot_price: float,
+    trade_entry_time: datetime,
     trade_entry: float,
     trade_stop: float,
     risk_distance: float,
@@ -503,10 +508,10 @@ def _features(
     funding_times: list[datetime],
 ) -> tuple[float, ...] | None:
     m5_hist = _history_before(candles_5m, snapshot_time, 60)
-    m15_hist = _history_before(m15, snapshot_time, 16)
-    m30_hist = _history_before(m30, snapshot_time, 10)
-    h1_hist = _history_before(h1, snapshot_time, 8)
-    h4_hist = _history_before(h4, snapshot_time, 24)
+    m15_hist = _history_completed(m15, snapshot_time, 15, 16)
+    m30_hist = _history_completed(m30, snapshot_time, 30, 10)
+    h1_hist = _history_completed(h1, snapshot_time, 60, 8)
+    h4_hist = _history_completed(h4, snapshot_time, 240, 24)
     if (
         len(m5_hist) < 51
         or len(m15_hist) < 9
@@ -626,8 +631,7 @@ def _features(
         mfe_so_far_r,
         mae_so_far_r,
         retrace_from_mfe_r,
-        (snapshot_time - _to_utc(snapshot_time, trade_entry)).total_seconds()
-        / 3600.0,
+        (snapshot_time - trade_entry_time).total_seconds() / 3600.0,
         (snapshot_price - trade_stop) / risk_distance,
         (target_price - snapshot_price) / risk_distance,
         oi_change_30m,
@@ -639,10 +643,6 @@ def _features(
         1.0 if ratio_available else 0.0,
         1.0 if funding_available else 0.0,
     )
-
-
-def _to_utc(snapshot_time: datetime, trade_entry: float):
-    raise AssertionError("unreachable")
 
 
 def _future_state_class(
@@ -740,6 +740,20 @@ def _history_before(
 ) -> tuple[Candle, ...]:
     times = [candle.timestamp for candle in candles]
     end = bisect_left(times, timestamp)
+    return candles[max(0, end - count) : end]
+
+
+def _history_completed(
+    candles: tuple[Candle, ...],
+    timestamp: datetime,
+    period_minutes: int,
+    count: int,
+) -> tuple[Candle, ...]:
+    ends = [
+        candle.timestamp + timedelta(minutes=period_minutes)
+        for candle in candles
+    ]
+    end = bisect_right(ends, timestamp)
     return candles[max(0, end - count) : end]
 
 
