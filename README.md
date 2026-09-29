@@ -9,7 +9,7 @@ The first version is intentionally small:
 - research markets are tested separately rather than forcing one universal strategy;
 - legacy FX research remains reproducible;
 - current market: Crypto, starting with BTC/USD;
-- current candidate: Bybit BTCUSDT Trend LONG v1.1 + real-move ML filter v0.2;
+- current candidate: Bybit BTCUSDT Market State Model v0.1;
 - daily-income consistency is now a primary evaluation target;
 - starting equity model: USD 1,000;
 - default risk: 0.5% per trade, 1.0% maximum combined open risk;
@@ -666,6 +666,72 @@ The primary v0.2 question is classification lift: does selected REAL_MOVE precis
 economic-gate REAL_MOVE base rate with useful recall, consistently across both development folds?
 Trade PnL remains reported because POST_STOP_MOVE can still lose under the current execution despite
 being a true REAL_MOVE label.
+
+v0.2 also failed: combined REAL_MOVE precision was below the economic-gate base rate, so the project
+does not continue tuning the M30 entry classifier. The next experiment moves ML into the position-management
+problem directly.
+
+## Market State Model v0.1
+
+Market State Model v0.1 asks whether a richer state can distinguish recoverable market noise from genuine
+reversal risk while an economic-pass LONG position is alive. It is diagnostic only: it does not yet replace
+the hard stop or issue live HOLD/EXIT decisions.
+
+Additional Bybit inputs:
+- native M5 klines;
+- 30-minute open interest;
+- 30-minute long/short account ratio;
+- historical funding rates.
+
+The public Bybit V5 endpoints used are market kline, open interest, long/short ratio and funding history.
+Higher timeframes are built only from completed M5 buckets so a snapshot never sees a partially formed
+future candle.
+
+Download the 2023-2025 state bundle:
+
+    medium-trading download-bybit-state `
+      --symbol BTCUSDT `
+      --from 2023-01-01 `
+      --to 2025-12-31 `
+      --output-dir data/bybit/state
+
+This creates:
+- data/bybit/state/BTCUSDT_M5.csv
+- data/bybit/state/BTCUSDT_OPEN_INTEREST_30M.csv
+- data/bybit/state/BTCUSDT_ACCOUNT_RATIO_30M.csv
+- data/bybit/state/BTCUSDT_FUNDING.csv
+
+The model samples every 15 minutes only while the original position is still alive, and only at management
+stress points: retrace from prior MFE >=0.15R or current PnL <=-0.05R. Each snapshot sees M5/M15/M30/1H/4H
+price/volume state, current trade path, OI, account positioning and latest funding.
+
+The 8-hour diagnostic labels are:
+- TREND_VALID: +0.5R before -0.5R;
+- NOISE_PULLBACK: -0.5R first, then recovery to +0.5R within 8h;
+- REVERSAL: -0.5R without recovery to +0.5R within 8h;
+- STALL: neither threshold reached.
+
+The classifier predicts REVERSAL vs all other states. Two regressors separately predict future 2-hour MFE
+and MAE. 2024 and 2025 are expanding-window development folds; 2026 remains untouched.
+
+Run:
+
+    medium-trading btc-market-state-v0-1-evaluate `
+      --m30 "data/bybit/BTCUSDT_M30.csv" `
+      --m5 "data/bybit/state/BTCUSDT_M5.csv" `
+      --open-interest "data/bybit/state/BTCUSDT_OPEN_INTEREST_30M.csv" `
+      --account-ratio "data/bybit/state/BTCUSDT_ACCOUNT_RATIO_30M.csv" `
+      --funding "data/bybit/state/BTCUSDT_FUNDING.csv" `
+      --symbol BTCUSDT `
+      --fee-bps-per-side 5.5 `
+      --slippage-bps-per-side 2.0 `
+      --starting-equity 10000 `
+      --risk 0.005 `
+      --json artifacts/bybit_btcusdt_market_state_v0_1.json
+
+The first result should be judged as an information test: reversal precision/recall/lift and ROC AUC,
+plus whether the MFE/MAE regressors beat a naive training-mean predictor. Do not tune the threshold from
+the first result.
 
 The legacy daily gate remains strict and conjunctive for the older daily-income studies: at least 250 eligible sessions, at least 300 trades, >=70%
 active-session rate, >=45% profitable active days, positive average net R/session, net PF >=1.15,
