@@ -13,8 +13,8 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 - Legacy FX universe: EUR/USD, GBP/USD, USD/JPY, AUD/USD plus four external FX pairs used in validation.
 - Current market: Crypto, starting with BTC/USD.
 - Core data timeframe for the current candidate: 30m.
-- Current research candidate: frozen BTC/USD rolling intraday momentum continuation.
-- Starting equity model: USD 1,000.
+- Current research candidate: frozen BTC/USD Trend LONG v1 diagnostic baseline.
+- Default project starting equity model: USD 1,000. The BTC Trend LONG v1 diagnostic baseline uses USD 10,000 so R-to-USD interpretation is explicit.
 - Default risk: 0.5% of equity per trade.
 - Maximum combined open risk: 1.0% of equity.
 - Strategy decisions use closed candles.
@@ -73,27 +73,29 @@ The first frozen BTC/USD UTC Daily Volatility Expansion baseline failed the Dail
 
 The uploaded BTC/USD history also exposed material historical-data fragmentation, especially in 2023. For crypto daily-income evaluation, an eligible UTC day must now contain at least 40 of the possible 48 M30 bars. Days below that coverage threshold are excluded from the session denominator; missing bars are never synthesized. Strategy signals additionally require contiguous recent M30 history when their logic depends on rolling momentum.
 
-The current frozen crypto hypothesis is BTC/USD rolling intraday momentum continuation:
-- crypto daily accounting uses UTC calendar days;
-- eligible session day: at least 40 M30 candles in that UTC day;
-- decisions are allowed from 02:00 through 22:00 UTC;
-- trend state uses the eight M30 candles immediately before the pullback, a rolling 4-hour window rather than a fixed early-day range;
-- absolute first-open to last-close trend move must be at least 0.75 ATR14;
-- at least 5 of those 8 trend candles must have candle-body direction matching the trend;
-- the next M30 candle must be counter-directional and its extreme may retrace no more than 50% of the rolling trend move;
-- the immediately following M30 candle must resume in the trend direction and close through the pullback high for LONG or pullback low for SHORT;
-- the last 15 M30 candles used by the setup must be contiguous with exact 30-minute spacing;
-- entry: next M30 open;
-- stop: pullback low for LONG or pullback high for SHORT;
-- target: 1.5R;
-- maximum holding: 8 M30 bars (4 hours);
-- maximum one momentum-continuation attempt per UTC day;
-- default risk remains 0.5% per trade;
-- BTC/USD research pip size remains 1.0 USD;
-- modeled round-trip research cost remains frozen at 50 USD price points; 2x stress is 100 USD;
-- fixed evaluation years remain 2023, 2024 and 2025.
+The frozen BTC/USD rolling intraday momentum-continuation baseline also failed. It produced 333 trades across 867 quality-filtered UTC sessions, negative gross/net performance overall, and only 2024 was positive. It is REJECTED. Do not tune that mixed LONG/SHORT hypothesis further on the inspected 2023-2025 data.
 
-Do not tune the 4-hour trend window, 0.75 ATR threshold, 5-of-8 directional rule, 50% retracement limit, decision window, target, stop, holding period or 50 USD cost after viewing the baseline result. This is a separate crypto hypothesis and receives one frozen baseline plus at most one materially justified modification only if the baseline is close but fails the gate.
+The research focus is now deliberately narrower: BTC/USD Trend LONG v1. The purpose is diagnostic, not to maximize historical profit and not to satisfy the old Daily Income Gate.
+- instrument: BTC/USD only;
+- side: LONG only; no SHORT and no sideways/range basket;
+- ML: OFF;
+- noise filter: OFF;
+- 4H trend regime: latest completed 4H close above EMA20, and EMA20 above its value three completed 4H bars earlier;
+- M30 setup: one bearish pullback candle followed immediately by a bullish M30 candle that closes above the pullback high;
+- entry: next M30 open;
+- stop: pullback low;
+- target: 2.0R;
+- maximum holding: 48 M30 bars / 24 hours;
+- maximum one open BTC position at a time via the shared backtest engine;
+- starting equity for this diagnostic: USD 10,000;
+- risk: 0.5% per trade, so 1R initially corresponds to USD 50;
+- BTC/USD round-trip modeled cost remains USD 50 price points;
+- the old 8x expected-move cost gate is intentionally disabled for this diagnostic by setting minimum_cost_multiple=0.01. This is not a relaxation of transaction costs: costs are still deducted from every trade. The purpose is to observe noisy/micro setups instead of hiding them before later ML/noise-filter work;
+- fixed historical trade window: 2023-01-01 through 2025-12-31.
+
+BTC Trend LONG v1 diagnostics must include each executed trade plus 24-hour MFE, MAE, post-exit favorable movement and rates of reaching +0.5R/+1R/+2R/+3R. Summaries must report gross and net R/PF, cost drag, drawdown, USD equity result and yearly splits.
+
+Do not use the Daily Income Gate to judge this baseline. A small net loss is not by itself a rejection if the gross LONG stream has evidence of edge and the diagnostics show a concrete, repeatable noise/cost/entry problem. Conversely, if gross expectancy is negative across the inspected folds and strong LONG continuations are not being captured, do not add ML to rescue it: fix or reject the deterministic LONG logic first. Do not tune EMA period, EMA slope lookback, pullback/confirmation definition, target, stop, holding period or costs after viewing the first result.
 
 Daily Income Gate is frozen before the first result. A strategy passes only if all conditions hold across the combined fixed test years:
 - at least 250 eligible session days;
