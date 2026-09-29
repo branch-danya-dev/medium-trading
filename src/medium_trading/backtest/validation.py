@@ -24,6 +24,13 @@ class SymbolEvaluation:
     out_of_sample_2x_costs: BacktestReport
 
 
+@dataclass(frozen=True, slots=True)
+class ForwardEvaluation:
+    symbol: str
+    forward: BacktestReport
+    forward_2x_costs: BacktestReport
+
+
 def chronological_splits(
     candles: tuple[Candle, ...],
     *,
@@ -110,20 +117,11 @@ def evaluate_symbol(
         trade_start=out_of_sample.trade_start,
     )
 
-    stressed_config = BacktestConfig(
-        starting_equity=config.starting_equity,
-        risk_fraction=config.risk_fraction,
-        target_r=config.target_r,
-        max_holding_bars=config.max_holding_bars,
-        round_trip_cost_pips=config.round_trip_cost_pips,
-        cost_stress_multiplier=config.cost_stress_multiplier * 2.0,
-        minimum_cost_multiple=config.minimum_cost_multiple,
-    )
     stressed_report = run_backtest(
         symbol=symbol,
         candles_30m=out_of_sample.candles,
         strategy=strategy,
-        config=stressed_config,
+        config=_double_costs(config),
         trade_start=out_of_sample.trade_start,
     )
 
@@ -133,4 +131,57 @@ def evaluate_symbol(
         validation=validation_report,
         out_of_sample=out_of_sample_report,
         out_of_sample_2x_costs=stressed_report,
+    )
+
+
+def evaluate_forward_symbol(
+    *,
+    symbol: str,
+    candles: tuple[Candle, ...],
+    strategy: Strategy,
+    config: BacktestConfig,
+    trade_start: datetime,
+    trade_end: datetime,
+) -> ForwardEvaluation:
+    if trade_end < trade_start:
+        raise ValueError("trade_end cannot be before trade_start")
+    if not candles:
+        raise ValueError("forward dataset cannot be empty")
+    if candles[0].timestamp >= trade_start:
+        raise ValueError("forward dataset must include warmup candles before trade_start")
+    if candles[-1].timestamp <= trade_end:
+        raise ValueError("forward dataset must extend beyond trade_end for exit horizon")
+
+    forward = run_backtest(
+        symbol=symbol,
+        candles_30m=candles,
+        strategy=strategy,
+        config=config,
+        trade_start=trade_start,
+        trade_end=trade_end,
+    )
+    stressed = run_backtest(
+        symbol=symbol,
+        candles_30m=candles,
+        strategy=strategy,
+        config=_double_costs(config),
+        trade_start=trade_start,
+        trade_end=trade_end,
+    )
+    return ForwardEvaluation(
+        symbol=symbol,
+        forward=forward,
+        forward_2x_costs=stressed,
+    )
+
+
+def _double_costs(config: BacktestConfig) -> BacktestConfig:
+    return BacktestConfig(
+        starting_equity=config.starting_equity,
+        risk_fraction=config.risk_fraction,
+        target_r=config.target_r,
+        max_holding_bars=config.max_holding_bars,
+        round_trip_cost_pips=config.round_trip_cost_pips,
+        cost_stress_multiplier=config.cost_stress_multiplier * 2.0,
+        minimum_cost_multiple=config.minimum_cost_multiple,
     )
