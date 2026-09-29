@@ -9,10 +9,11 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 
 ## Fixed MVP scope
 
-- Market: spot FX.
-- Symbols: EUR/USD, GBP/USD, USD/JPY, AUD/USD.
-- Core data timeframes: 4h, 1h, 30m.
-- Current research candidate: final frozen Direct ML best-opportunity gate.
+- Research scope: multiple liquid markets, evaluated one strategy/market hypothesis at a time.
+- Legacy FX universe: EUR/USD, GBP/USD, USD/JPY, AUD/USD plus four external FX pairs used in validation.
+- Current market: US index CFDs USA500.IDX/USD and USATECH.IDX/USD.
+- Core data timeframe for the current candidate: 30m.
+- Current research candidate: frozen 30m US cash Opening Range Breakout.
 - Starting equity model: USD 1,000.
 - Default risk: 0.5% of equity per trade.
 - Maximum combined open risk: 1.0% of equity.
@@ -40,9 +41,37 @@ Direct-ML model parameters are fixed: learning_rate=0.05, max_iter=120, max_leaf
 
 Historical direct-ML evaluation is expanding-window walk-forward with calendar-year test folds 2023, 2024 and 2025. A training opportunity is usable only if both hypothetical LONG and SHORT outcomes were fully known before the test year begins.
 
-The first Direct ML walk-forward failed: combined net and gross evidence was insufficient and all three yearly net results were negative. Exactly one final modification is allowed before rejecting Direct ML: at each 4H decision timestamp rank every pair and both directions by the unchanged model predictions, open only the single highest predicted opportunity above 0.0R, and allow at most one open position globally. Model parameters, features, execution, cost gate, threshold and pair universe remain unchanged.
+The first Direct ML walk-forward failed, and its final pre-registered best-opportunity kill-gate was also rejected. Direct ML is REJECTED. Do not tune or revive it on the inspected FX datasets without an explicit new research task.
 
-The final Direct ML kill-gate is frozen before the result is viewed. Direct ML passes only if all conditions hold: at least 500 selected trades, combined gross profit factor > 1.00, combined net profit factor >= 1.10, combined 2x-cost profit factor > 1.00, and positive net R in at least 2 of the 3 test years. Failure of any condition means Direct ML is REJECTED. Do not tune it further on these datasets. The already-inspected 2026 period may only be used if this historical final gate passes; final confirmation still requires later unseen data or paper-forward observation.
+The project now evaluates market-specific strategies with daily-income consistency as a first-class gate. Do not optimize for a requested percentage return per day. Measure R/day first; translate to percentage returns only after a strategy survives costs and stability gates.
+
+The current frozen candidate is a US index Opening Range Breakout on USA500.IDX/USD and USATECH.IDX/USD:
+- opening range: the 09:30-10:00 America/New_York M30 candle;
+- trigger: the first later M30 close outside that range, with breakout decisions ending at 13:00 New York time;
+- entry: next M30 open;
+- stop: opposite side of the opening range;
+- target: 1.5R;
+- maximum holding: 6 M30 bars (3 hours);
+- maximum one breakout attempt per session;
+- default risk remains 0.5% per trade;
+- modeled round-trip research costs are frozen at 1.0 index price point for USA500.IDX/USD and 3.0 index price points for USATECH.IDX/USD;
+- initial fixed evaluation years: 2023, 2024 and 2025. If this gate passes, 2026 is reserved for a later temporal-forward diagnostic.
+
+Daily Income Gate is frozen before the first result. A strategy passes only if all conditions hold across the combined fixed test years:
+- at least 250 eligible session days;
+- at least 300 trades;
+- active on at least 70% of eligible sessions;
+- profitable on at least 45% of active days;
+- average net R per eligible session > 0;
+- net profit factor >= 1.15;
+- 2x-cost profit factor > 1.00;
+- positive net R in at least 2 yearly folds;
+- at least 60% of calendar months positive;
+- worst day >= -2.0R;
+- longest losing-day streak <= 8 sessions;
+- best day contributes less than 15% of total positive daily R.
+
+For each new market strategy: one frozen baseline plus at most one materially justified modification. If it still fails the applicable gate, mark it REJECTED and move to the next market hypothesis.
 
 ## Architecture rules
 
@@ -98,6 +127,7 @@ Every strategy change must answer:
 Validation rules are mandatory:
 
 - keep training, validation and out-of-sample periods chronological;
+- for daily-income strategies, report eligible session days, active-day rate, R/day, profitable-day rate, losing-day streaks and monthly consistency;
 - never tune strategy parameters on the out-of-sample segment;
 - preserve enough pre-period candles only as indicator warmup;
 - report ordinary and 2x-cost out-of-sample results;
