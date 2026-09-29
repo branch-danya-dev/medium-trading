@@ -2,7 +2,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from medium_trading.backtest.engine import aggregate_candles, run_backtest
+from medium_trading.backtest.engine import aggregate_candles, pip_size, run_backtest
 from medium_trading.backtest.model import BacktestConfig
 from medium_trading.domain import Candle, Side, Signal, StrategyContext
 
@@ -315,3 +315,8 @@ def test_trade_end_prevents_signals_after_forward_window() -> None:
 
     assert report.signal_count == 0
     assert not report.trades
+
+
+def test_index_cfd_cost_unit_uses_whole_price_points() -> None:
+    assert pip_size("USA500.IDX/USD") == 1.0
+    assert pip_size("USATECH.IDX/USD") == 1.0
