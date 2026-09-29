@@ -11,6 +11,9 @@ _CONTEXT_WINDOW = 256
 
 def pip_size(symbol: str) -> float:
     normalized = symbol.replace("_", "/").upper()
+    if ".IDX/" in normalized:
+        # Multi-market research models index costs in whole index price points.
+        return 1.0
     quote_currency = normalized.split("/")[-1]
     return 0.01 if quote_currency == "JPY" else 0.0001
 
