@@ -13,7 +13,7 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 - Legacy FX universe: EUR/USD, GBP/USD, USD/JPY, AUD/USD plus four external FX pairs used in validation.
 - Current market: Crypto, starting with BTC/USD.
 - Core data timeframe for the current candidate: 30m.
-- Current research candidate: frozen BTC/USD Trend LONG v1.1 stop-width diagnostic.
+- Current research candidate: BTC/USD Trend LONG v1.1 corrected-execution rerun.
 - Default project starting equity model: USD 1,000. The BTC Trend LONG v1 diagnostic baseline uses USD 10,000 so R-to-USD interpretation is explicit.
 - Default risk: 0.5% of equity per trade.
 - Maximum combined open risk: 1.0% of equity.
@@ -108,6 +108,32 @@ The current frozen modification is BTC/USD Trend LONG v1.1. It changes only stop
 BTC Trend LONG v1.1 diagnostics must include MFE and MAE up to exit, 24-hour MFE/MAE, post-stop favorable movement, time from stop to later +1R/+2R when applicable, ATR14 at entry, stop distance in ATR and cost in R.
 
 Do not use the legacy Daily Income Gate for this v1/v1.1 diagnostic sequence. Compare v1.1 directly with v1 to answer one question: whether widening only the stop removes a material share of false stop-outs and reduces cost drag in R without destroying the weak positive gross edge. Do not change EMA period, EMA slope lookback, entry rule, target, holding period, cost, risk, or add ML before reading v1.1.
+
+BTC/USD Trend LONG v1.1 was then evaluated:
+- 1,019 LONG trades;
+- gross +35.57R with gross PF 1.055;
+- net -173.98R under the old fixed USD 50 price-point cost model;
+- total modeled cost 209.55R;
+- 649 stop/stop-gap exits;
+- 351 stopped trades later reached +1R and 251 later reached +2R inside the 24-hour diagnostic horizon;
+- widening the stop improved the result materially versus v1 but did not remove the core execution/timing problem.
+
+That v1.1 result also exposed two research-engine problems that must be corrected before any ML/noise filter is added:
+1. a fixed USD 50 BTC cost is not a stable transaction-cost model across BTC price regimes;
+2. 48 encountered M30 bars are not necessarily 24 real hours when the source history contains gaps.
+
+The current rerun keeps the Trend LONG v1.1 strategy completely unchanged and corrects only research mechanics:
+- fee model: notional percentage/bps, default 5.5 bps per side. This mirrors a conservative non-VIP taker/taker perpetual execution assumption; it is configurable and is not tuned to the observed result;
+- slippage model: separate configurable research assumption, default 2.0 bps per side;
+- fee and slippage are reported separately in R and summed into total execution cost;
+- funding is not modeled in this rerun because the Dukascopy candle dataset does not contain historical funding-rate series. Any later perpetual-live conclusion must add venue-specific funding;
+- maximum holding is a true 1,440 wall-clock minutes from entry;
+- the strategy is evaluated only after 192 consecutive M30 bars (96 hours) with exact 30-minute spacing so the ATR and completed 4H EMA context are not built across gaps;
+- after a signal, the entry plus 48-bar forward execution window must also be contiguous. Otherwise the setup is rejected as a data-quality gap instead of being simulated across missing history;
+- report gap_context_rejections separately from gap_signal_rejections;
+- ML remains OFF and the entry, EMA regime, ATR stop floor, 2R target, 0.5% risk and USD 10,000 starting equity remain unchanged.
+
+This corrected rerun is not a new trading strategy and must not be interpreted as parameter tuning. Its purpose is to establish a trustworthy deterministic LONG baseline before deciding whether an ML noise filter has a valid role.
 
 Daily Income Gate is frozen before the first result. A strategy passes only if all conditions hold across the combined fixed test years:
 - at least 250 eligible session days;
