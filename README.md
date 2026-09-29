@@ -9,7 +9,7 @@ The first version is intentionally small:
 - research markets are tested separately rather than forcing one universal strategy;
 - legacy FX research remains reproducible;
 - current market: Crypto, starting with BTC/USD;
-- current candidate: BTC/USD Trend LONG v1.1 corrected-execution rerun;
+- current candidate: Bybit BTCUSDT linear-perpetual Trend LONG v1.1 rerun;
 - daily-income consistency is now a primary evaluation target;
 - starting equity model: USD 1,000;
 - default risk: 0.5% per trade, 1.0% maximum combined open risk;
@@ -563,6 +563,46 @@ Run the corrected v1.1 research pass:
 On PowerShell, replace carets with backticks. The output separates fee R, slippage R, total cost R,
 holding hours and gap diagnostics. Do not add ML or alter the trading rules until this corrected baseline
 has been inspected.
+
+The Dukascopy BTC history proved too fragmented for the next conclusion, so the same frozen strategy is now
+rerun on exchange-native Bybit BTCUSDT USDT-perpetual M30 candles. Bybit V5 public kline history does not
+require an API key. The downloader is strict: it expects every requested 30-minute slot and aborts instead
+of synthesizing or silently accepting a missing candle.
+
+Download the fixed 2023-2025 Bybit history:
+
+    medium-trading download-bybit ^
+      --symbol BTCUSDT ^
+      --category linear ^
+      --from 2023-01-01 ^
+      --to 2025-12-31 ^
+      --output-dir data/bybit
+
+PowerShell:
+
+    medium-trading download-bybit `
+      --symbol BTCUSDT `
+      --category linear `
+      --from 2023-01-01 `
+      --to 2025-12-31 `
+      --output-dir data/bybit
+
+The default REST endpoint is https://api.bybit.com/v5/market/kline. If Bybit requires a regional endpoint,
+pass the full kline endpoint with --base-url. The saved file is data/bybit/BTCUSDT_M30.csv.
+
+Then rerun the unchanged corrected LONG v1.1:
+
+    medium-trading btc-long-v1-1-corrected-evaluate `
+      --data "data/bybit/BTCUSDT_M30.csv" `
+      --symbol BTCUSDT `
+      --fee-bps-per-side 5.5 `
+      --slippage-bps-per-side 2.0 `
+      --starting-equity 10000 `
+      --risk 0.005 `
+      --json artifacts/bybit_btcusdt_trend_long_v1_1.json
+
+This is a data-source validation pass, not a strategy modification. EMA regime, entry, ATR stop floor, 2R
+target, risk and ML/noise-filter status remain frozen.
 
 The legacy daily gate remains strict and conjunctive for the older daily-income studies: at least 250 eligible sessions, at least 300 trades, >=70%
 active-session rate, >=45% profitable active days, positive average net R/session, net PF >=1.15,
