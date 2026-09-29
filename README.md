@@ -9,7 +9,7 @@ The first version is intentionally small:
 - research markets are tested separately rather than forcing one universal strategy;
 - legacy FX research remains reproducible;
 - current market: Gold / XAU/USD;
-- current candidate: frozen 30m London-reference to New York breakout;
+- current candidate: frozen XAU/USD New York momentum continuation;
 - daily-income consistency is now a primary evaluation target;
 - starting equity model: USD 1,000;
 - default risk: 0.5% per trade, 1.0% maximum combined open risk;
@@ -430,9 +430,27 @@ Run the fixed 2023-2025 daily-income baseline:
       --cost XAU/USD=80 ^
       --json artifacts/gold_london_ny_breakout_daily_eval.json
 
-Do not tune the London range, New York window, 1.5R target, 3-hour holding period or 80-pip cost after
-reading the baseline result. The gold hypothesis gets at most one materially justified modification if
-the baseline is close but fails.
+That London-range breakout baseline failed the gate and is rejected.
+
+The next gold hypothesis is New York momentum continuation. It requires a 05:00-08:30 New York impulse
+of at least 1.0 ATR14, with at least five of the seven M30 candle bodies aligned with the impulse. After
+08:30, the first counter-direction M30 candle is treated as the pullback; its extreme may not retrace
+more than 50% of the impulse. The first later directional close through both the pullback boundary and
+the impulse ending price triggers entry on the next M30 open. Stop is the pullback extreme, target is
+1.5R, maximum holding remains 3 hours, and there is at most one attempt per day. New decisions stop after
+11:30 New York time.
+
+Run the frozen 2023-2025 momentum baseline using the same gold history and the same 80-pip cost:
+
+    medium-trading daily-evaluate ^
+      --strategy gold-ny-momentum-continuation ^
+      --dataset XAU/USD=data/gold/XAU_USD_M30.csv ^
+      --cost XAU/USD=80 ^
+      --json artifacts/gold_ny_momentum_continuation_daily_eval.json
+
+Do not tune the 1.0 ATR impulse threshold, 5-of-7 directional rule, 50% retracement limit, 1.5R target,
+3-hour holding period or 80-pip cost after reading this result. This separate gold hypothesis gets at
+most one materially justified modification if the baseline is close but fails.
 
 The daily gate is strict and conjunctive: at least 250 eligible sessions, at least 300 trades, >=70%
 active-session rate, >=45% profitable active days, positive average net R/session, net PF >=1.15,
