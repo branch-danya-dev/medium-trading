@@ -18,9 +18,11 @@ from medium_trading.data.dukascopy_download import download_m30
 from medium_trading.data.oanda import OandaHistoryClient
 from medium_trading.ml_filter import (
     evaluate_mean_reversion_ml_filter,
+    evaluate_mean_reversion_ml_forward,
     extract_mean_reversion_samples,
 )
 from medium_trading.ml_filter import evaluation_payload as ml_evaluation_payload
+from medium_trading.ml_filter import forward_evaluation_payload as ml_forward_payload
 from medium_trading.strategy import (
     MeanReversionStrategy,
     TimeSeriesMomentumStrategy,
@@ -148,6 +150,31 @@ def main() -> None:
     ml_evaluate.add_argument("--risk", type=float, default=0.005)
     ml_evaluate.add_argument("--json", dest="json_output")
 
+    ml_forward = subparsers.add_parser("ml-forward-evaluate")
+    ml_forward.add_argument(
+        "--train-dataset",
+        action="append",
+        required=True,
+        help="Repeatable SYMBOL=CSV for pre-forward training history",
+    )
+    ml_forward.add_argument(
+        "--forward-dataset",
+        action="append",
+        required=True,
+        help="Repeatable SYMBOL=CSV containing warmup, forward window and exit horizon",
+    )
+    ml_forward.add_argument(
+        "--cost",
+        action="append",
+        default=[],
+        help="Optional repeatable SYMBOL=PIPS override",
+    )
+    ml_forward.add_argument("--trade-start", required=True)
+    ml_forward.add_argument("--trade-end", required=True)
+    ml_forward.add_argument("--default-cost-pips", type=float, default=1.2)
+    ml_forward.add_argument("--risk", type=float, default=0.005)
+    ml_forward.add_argument("--json", dest="json_output")
+
     args = parser.parse_args()
     if args.command == "download-dukascopy":
         _download_dukascopy(args)
@@ -163,6 +190,8 @@ def main() -> None:
         _forward_evaluate(args)
     elif args.command == "ml-evaluate":
         _ml_evaluate(args)
+    elif args.command == "ml-forward-evaluate":
+        _ml_forward_evaluate(args)
 
 
 def _download_dukascopy(args: argparse.Namespace) -> None:
@@ -386,6 +415,70 @@ def _ml_evaluate(args: argparse.Namespace) -> None:
         print(f"wrote ML evaluation report to {output}")
 
 
+def _ml_forward_evaluate(args: argparse.Namespace) -> None:
+    train_datasets = _parse_assignments(args.train_dataset, "train-dataset")
+    forward_datasets = _parse_assignments(args.forward_dataset, "forward-dataset")
+    if set(train_datasets) != set(forward_datasets):
+        raise SystemExit(
+            "--train-dataset and --forward-dataset must contain the same symbols"
+        )
+
+    costs = {
+        symbol: float(value)
+        for symbol, value in _parse_assignments(args.cost, "cost").items()
+    }
+    trade_start = _parse_date(args.trade_start)
+    trade_end = _parse_date(args.trade_end)
+    _, max_holding_bars = _strategy_backtest_defaults("mean-reversion")
+
+    training_samples = []
+    forward_samples = []
+    for symbol in train_datasets:
+        config = BacktestConfig(
+            risk_fraction=args.risk,
+            target_r=2.0,
+            max_holding_bars=max_holding_bars,
+            round_trip_cost_pips=costs.get(symbol, args.default_cost_pips),
+        )
+        training_samples.extend(
+            extract_mean_reversion_samples(
+                symbol=symbol,
+                candles=load_candles(train_datasets[symbol]),
+                config=config,
+            )
+        )
+        forward_samples.extend(
+            extract_mean_reversion_samples(
+                symbol=symbol,
+                candles=load_candles(forward_datasets[symbol]),
+                config=config,
+                trade_start=trade_start,
+                trade_end=trade_end,
+            )
+        )
+
+    evaluation = evaluate_mean_reversion_ml_forward(
+        training_samples,
+        forward_samples,
+        trade_start=trade_start,
+        trade_end=trade_end,
+    )
+    _print_ml_forward_evaluation(evaluation)
+
+    if args.json_output:
+        output = Path(args.json_output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(
+            json.dumps(
+                ml_forward_payload(evaluation),
+                indent=2,
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        print(f"wrote ML forward evaluation report to {output}")
+
+
 def _strategy_from_name(name: str) -> Strategy:
     if name == "trend-pullback":
         return TrendPullbackStrategy()
@@ -524,6 +617,25 @@ def _print_ml_evaluation(evaluation) -> None:
         f"baseline={evaluation.combined_baseline.net_r:.2f}R, "
         f"ml={evaluation.combined_model.net_r:.2f}R, "
         f"ml_2x={evaluation.combined_model_2x_costs.net_r:.2f}R"
+    )
+
+
+def _print_ml_forward_evaluation(evaluation) -> None:
+    print(f"train samples: {evaluation.train_samples}")
+    print(f"forward samples: {evaluation.test_samples}")
+    print(f"selected samples: {evaluation.selected_samples}")
+    print(
+        "baseline: "
+        f"{evaluation.baseline.net_r:.2f}R, PF={evaluation.baseline.profit_factor:.2f}"
+    )
+    print(
+        "model: "
+        f"{evaluation.model.net_r:.2f}R, PF={evaluation.model.profit_factor:.2f}"
+    )
+    print(
+        "model 2x costs: "
+        f"{evaluation.model_2x_costs.net_r:.2f}R, "
+        f"PF={evaluation.model_2x_costs.profit_factor:.2f}"
     )
 
 
