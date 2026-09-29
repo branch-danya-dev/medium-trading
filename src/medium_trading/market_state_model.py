@@ -198,14 +198,23 @@ def extract_market_state_samples(
         if entry_index >= len(candles_5m):
             continue
 
+        target_price = trade.entry + 2.0 * risk_distance
+        m5_exit_time = _first_m5_exit_time(
+            candles_5m=candles_5m,
+            m5_times=m5_times,
+            entry_time=trade.entry_time,
+            stop=trade.stop,
+            target=target_price,
+        )
         exit_limit = min(
             trade.exit_time,
+            m5_exit_time,
             trade.entry_time + timedelta(hours=24),
-            candles_5m[-1].timestamp,
+            candles_5m[-1].timestamp + timedelta(minutes=5),
         )
         snapshot_time = trade.entry_time + timedelta(minutes=SNAPSHOT_MINUTES)
 
-        while snapshot_time <= exit_limit:
+        while snapshot_time < exit_limit:
             if snapshot_time + timedelta(hours=LABEL_HORIZON_HOURS) > (
                 candles_5m[-1].timestamp + timedelta(minutes=5)
             ):
@@ -217,12 +226,20 @@ def extract_market_state_samples(
 
             price = candles_5m[end_index - 1].close
             path = candles_5m[entry_index:end_index]
-            mfe_so_far_r = (
-                max(candle.high for candle in path) - trade.entry
-            ) / risk_distance
-            mae_so_far_r = (
-                trade.entry - min(candle.low for candle in path)
-            ) / risk_distance
+            mfe_so_far_r = max(
+                0.0,
+                (
+                    max(candle.high for candle in path) - trade.entry
+                )
+                / risk_distance,
+            )
+            mae_so_far_r = max(
+                0.0,
+                (
+                    trade.entry - min(candle.low for candle in path)
+                )
+                / risk_distance,
+            )
             current_r = (price - trade.entry) / risk_distance
             retrace_from_mfe_r = mfe_so_far_r - current_r
 
@@ -646,6 +663,26 @@ def _features(
     )
 
 
+def _first_m5_exit_time(
+    *,
+    candles_5m: tuple[Candle, ...],
+    m5_times: list[datetime],
+    entry_time: datetime,
+    stop: float,
+    target: float,
+) -> datetime:
+    start = bisect_left(m5_times, entry_time)
+    deadline = entry_time + timedelta(hours=24)
+    end = bisect_left(m5_times, deadline)
+    for candle in candles_5m[start:end]:
+        candle_end = candle.timestamp + timedelta(minutes=5)
+        if candle.low <= stop:
+            return candle_end
+        if candle.high >= target:
+            return candle_end
+    return deadline
+
+
 def _future_state_class(
     *,
     candles_5m: tuple[Candle, ...],
@@ -690,8 +727,14 @@ def _future_excursions(
     if not future:
         return 0.0, 0.0
 
-    mfe = (max(candle.high for candle in future) - snapshot_price) / risk_distance
-    mae = (snapshot_price - min(candle.low for candle in future)) / risk_distance
+    mfe = max(
+        0.0,
+        (max(candle.high for candle in future) - snapshot_price) / risk_distance,
+    )
+    mae = max(
+        0.0,
+        (snapshot_price - min(candle.low for candle in future)) / risk_distance,
+    )
     return mfe, mae
 
 
