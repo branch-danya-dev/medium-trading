@@ -6,7 +6,12 @@ from pathlib import Path
 
 from medium_trading.backtest.engine import pip_size, run_backtest
 from medium_trading.backtest.model import BacktestConfig, BacktestReport
-from medium_trading.backtest.validation import SymbolEvaluation, evaluate_symbol
+from medium_trading.backtest.validation import (
+    ForwardEvaluation,
+    SymbolEvaluation,
+    evaluate_forward_symbol,
+    evaluate_symbol,
+)
 from medium_trading.config import Settings
 from medium_trading.data import import_dukascopy, load_candles, save_candles
 from medium_trading.data.dukascopy_download import download_m30
@@ -95,6 +100,32 @@ def main() -> None:
     evaluate.add_argument("--validation-fraction", type=float, default=0.20)
     evaluate.add_argument("--json", dest="json_output")
 
+    forward = subparsers.add_parser("forward-evaluate")
+    forward.add_argument(
+        "--dataset",
+        action="append",
+        required=True,
+        help="Repeatable SYMBOL=CSV with warmup before --trade-start",
+    )
+    forward.add_argument(
+        "--cost",
+        action="append",
+        default=[],
+        help="Optional repeatable SYMBOL=PIPS override",
+    )
+    forward.add_argument(
+        "--strategy",
+        choices=_STRATEGY_CHOICES,
+        default="mean-reversion",
+    )
+    forward.add_argument("--trade-start", required=True)
+    forward.add_argument("--trade-end", required=True)
+    forward.add_argument("--default-cost-pips", type=float, default=1.2)
+    forward.add_argument("--risk", type=float, default=0.005)
+    forward.add_argument("--target-r", type=float)
+    forward.add_argument("--max-holding-bars", type=int)
+    forward.add_argument("--json", dest="json_output")
+
     args = parser.parse_args()
     if args.command == "download-dukascopy":
         _download_dukascopy(args)
@@ -106,6 +137,8 @@ def main() -> None:
         _backtest(args)
     elif args.command == "evaluate":
         _evaluate(args)
+    elif args.command == "forward-evaluate":
+        _forward_evaluate(args)
 
 
 def _download_dukascopy(args: argparse.Namespace) -> None:
@@ -241,6 +274,53 @@ def _evaluate(args: argparse.Namespace) -> None:
         print(f"wrote evaluation report to {output}")
 
 
+def _forward_evaluate(args: argparse.Namespace) -> None:
+    datasets = _parse_assignments(args.dataset, "dataset")
+    costs = {
+        symbol: float(value)
+        for symbol, value in _parse_assignments(args.cost, "cost").items()
+    }
+    trade_start = _parse_date(args.trade_start)
+    trade_end = _parse_date(args.trade_end)
+    target_r, max_holding_bars = _strategy_backtest_defaults(args.strategy)
+
+    evaluations: list[ForwardEvaluation] = []
+    for symbol, filename in datasets.items():
+        cost_pips = costs.get(symbol, args.default_cost_pips)
+        evaluation = evaluate_forward_symbol(
+            symbol=symbol,
+            candles=load_candles(filename),
+            strategy=_strategy_from_name(args.strategy),
+            config=BacktestConfig(
+                risk_fraction=args.risk,
+                target_r=args.target_r if args.target_r is not None else target_r,
+                max_holding_bars=(
+                    args.max_holding_bars
+                    if args.max_holding_bars is not None
+                    else max_holding_bars
+                ),
+                round_trip_cost_pips=cost_pips,
+            ),
+            trade_start=trade_start,
+            trade_end=trade_end,
+        )
+        evaluations.append(evaluation)
+
+    _print_forward_evaluations(evaluations)
+    if args.json_output:
+        output = Path(args.json_output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(
+            json.dumps(
+                [_forward_evaluation_payload(item) for item in evaluations],
+                indent=2,
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        print(f"wrote forward evaluation report to {output}")
+
+
 def _strategy_from_name(name: str) -> Strategy:
     if name == "trend-pullback":
         return TrendPullbackStrategy()
@@ -323,6 +403,46 @@ def _print_evaluations(evaluations: list[SymbolEvaluation]) -> None:
                 f"{report.net_r:>9.2f} {gross_pf:>7} {net_pf:>7} "
                 f"{report.max_drawdown:>7.1%}"
             )
+
+
+def _print_forward_evaluations(evaluations: list[ForwardEvaluation]) -> None:
+    header = (
+        f"{'symbol':<10} {'segment':<18} {'trades':>7} {'grossR':>9} "
+        f"{'costR':>8} {'netR':>9} {'gPF':>7} {'nPF':>7} {'maxDD':>8}"
+    )
+    print(header)
+    print("-" * len(header))
+
+    for evaluation in evaluations:
+        rows = (
+            ("forward", evaluation.forward),
+            ("forward_2x_costs", evaluation.forward_2x_costs),
+        )
+        for name, report in rows:
+            net_pf = (
+                "inf"
+                if report.profit_factor == float("inf")
+                else f"{report.profit_factor:.2f}"
+            )
+            gross_pf = (
+                "inf"
+                if report.gross_profit_factor == float("inf")
+                else f"{report.gross_profit_factor:.2f}"
+            )
+            print(
+                f"{evaluation.symbol:<10} {name:<18} {len(report.trades):>7} "
+                f"{report.gross_r:>9.2f} {report.total_cost_r:>8.2f} "
+                f"{report.net_r:>9.2f} {gross_pf:>7} {net_pf:>7} "
+                f"{report.max_drawdown:>7.1%}"
+            )
+
+
+def _forward_evaluation_payload(evaluation: ForwardEvaluation) -> dict[str, object]:
+    return {
+        "symbol": evaluation.symbol,
+        "forward": _report_payload(evaluation.forward),
+        "forward_2x_costs": _report_payload(evaluation.forward_2x_costs),
+    }
 
 
 def _evaluation_payload(evaluation: SymbolEvaluation) -> dict[str, object]:
