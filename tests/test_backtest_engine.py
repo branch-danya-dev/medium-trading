@@ -299,3 +299,19 @@ def test_signal_is_skipped_if_explicit_target_is_already_behind_entry() -> None:
     assert report.signal_count == 1
     assert report.invalidated_before_entry == 1
     assert not report.trades
+
+
+def test_trade_end_prevents_signals_after_forward_window() -> None:
+    candles = tuple(_candle(index) for index in range(20))
+    trade_end = candles[14].timestamp + timedelta(minutes=30)
+
+    report = run_backtest(
+        symbol="EUR/USD",
+        candles_30m=candles,
+        strategy=OneShotStrategy(trigger_length=16),
+        config=BacktestConfig(round_trip_cost_pips=1.0),
+        trade_end=trade_end,
+    )
+
+    assert report.signal_count == 0
+    assert not report.trades
