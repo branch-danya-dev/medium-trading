@@ -17,10 +17,10 @@ from medium_trading.data import import_dukascopy, load_candles, save_candles
 from medium_trading.data.dukascopy_download import download_m30
 from medium_trading.data.oanda import OandaHistoryClient
 from medium_trading.ml_filter import (
-    evaluation_payload as ml_evaluation_payload,
     evaluate_mean_reversion_ml_filter,
     extract_mean_reversion_samples,
 )
+from medium_trading.ml_filter import evaluation_payload as ml_evaluation_payload
 from medium_trading.strategy import (
     MeanReversionStrategy,
     TimeSeriesMomentumStrategy,
