@@ -4,7 +4,9 @@ from medium_trading.ml_filter import (
     FEATURE_NAMES,
     TradeSample,
     evaluate_mean_reversion_ml_filter,
+    evaluate_mean_reversion_ml_forward,
     evaluation_payload,
+    forward_evaluation_payload,
 )
 
 
@@ -82,3 +84,60 @@ def test_training_excludes_labels_not_known_before_fold_start() -> None:
     )
 
     assert evaluation.folds[0].train_samples == 300
+
+
+def test_frozen_forward_filter_uses_only_pre_window_training_labels() -> None:
+    trade_start = datetime(2026, 1, 2, tzinfo=UTC)
+    trade_end = datetime(2026, 9, 18, tzinfo=UTC)
+
+    training = []
+    for year in range(2020, 2026):
+        for index in range(30):
+            training.append(_sample(year=year, index=index, positive=True))
+            training.append(_sample(year=year, index=index + 100, positive=False))
+
+    crossing = TradeSample(
+        symbol="EUR/USD",
+        entry_time=datetime(2026, 1, 1, 20, tzinfo=UTC),
+        exit_time=datetime(2026, 1, 3, tzinfo=UTC),
+        features=(1.0,) + (0.0,) * (len(FEATURE_NAMES) - 1),
+        gross_r=1.1,
+        cost_r=0.1,
+        net_r=1.0,
+    )
+    training.append(crossing)
+
+    forward = []
+    for index in range(60):
+        entry = trade_start + timedelta(minutes=30, hours=index)
+        positive = index % 2 == 0
+        sample = _sample(year=2026, index=index + 24, positive=positive)
+        forward.append(
+            TradeSample(
+                symbol=sample.symbol,
+                entry_time=entry,
+                exit_time=entry + timedelta(hours=1),
+                features=sample.features,
+                gross_r=sample.gross_r,
+                cost_r=sample.cost_r,
+                net_r=sample.net_r,
+            )
+        )
+
+    evaluation = evaluate_mean_reversion_ml_forward(
+        training,
+        forward,
+        trade_start=trade_start,
+        trade_end=trade_end,
+    )
+
+    assert evaluation.train_samples == 360
+    assert evaluation.test_samples == 60
+    assert 0 < evaluation.selected_samples < evaluation.test_samples
+    assert evaluation.model.net_r > evaluation.baseline.net_r
+    assert evaluation.model_2x_costs.net_r > 0
+
+    payload = forward_evaluation_payload(evaluation)
+    assert payload["trade_start"] == trade_start.isoformat()
+    assert payload["trade_end"] == trade_end.isoformat()
+    assert payload["model"]["prediction_threshold_r"] == 0.0
