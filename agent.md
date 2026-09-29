@@ -34,7 +34,7 @@ The current research task is a frozen ML filter over the existing Mean Reversion
 
 The fixed features are: side, absolute z-score, 30-bar efficiency ratio, ATR/price, target distance in ATR, reward/risk at actual entry, modeled cost in R, 1/3/6-bar 4H returns in ATR, 10-bar range in ATR, and current 4H candle body in ATR. Symbol identity is deliberately excluded. Do not add features, tune model hyperparameters, change the threshold, or select pairs based on the first ML results.
 
-Historical ML evaluation is expanding-window walk-forward with calendar-year test folds 2023, 2024 and 2025. A training label is usable only if the trade exited before the next test year begins. The already-inspected 2026 period is not a pristine final holdout for ML; final confirmation requires later unseen data or paper-forward observation.
+Historical ML evaluation is expanding-window walk-forward with calendar-year test folds 2023, 2024 and 2025. A training label is usable only if the trade exited before the next test year begins. The already-inspected 2026 period is not a pristine final holdout for ML; it may be used only as a frozen diagnostic forward check with no changes to features, model parameters, threshold, strategy rules, costs or pair selection. Final confirmation still requires later unseen data or paper-forward observation.
 
 ## Architecture rules
 
