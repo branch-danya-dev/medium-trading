@@ -357,6 +357,7 @@ def test_entry_relative_stop_floor_uses_actual_next_open() -> None:
         candles_30m=tuple(candles),
         strategy=OneShotStrategy(
             stop=1.1005,
+            trigger_length=17,
             minimum_stop_distance=0.0020,
         ),
         config=BacktestConfig(
