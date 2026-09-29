@@ -54,3 +54,34 @@ def test_trade_diagnostic_reports_24h_mfe_mae_and_post_exit_move() -> None:
     assert diagnostic["reached_1r_24h"] is True
     assert diagnostic["reached_2r_24h"] is True
     assert diagnostic["reached_3r_24h"] is False
+
+
+
+def test_stop_diagnostic_reports_recovery_time_after_stop() -> None:
+    candles = (
+        _bar(0, open_=100, high=101, low=99, close=100),
+        _bar(1, open_=100, high=100.5, low=89, close=90),
+        _bar(2, open_=90, high=111, low=90, close=108),
+        _bar(3, open_=108, high=121, low=107, close=120),
+    )
+    trade = BacktestTrade(
+        symbol="BTC/USD",
+        side=Side.LONG,
+        entry_time=candles[0].timestamp,
+        exit_time=candles[1].timestamp,
+        entry=100,
+        stop=90,
+        exit=90,
+        gross_r=-1.0,
+        net_r=-1.2,
+        cost_r=0.2,
+        exit_reason="stop",
+    )
+
+    diagnostic = _trade_diagnostic(candles, trade)
+
+    assert diagnostic["mfe_r_before_exit"] == pytest.approx(0.1)
+    assert diagnostic["mae_r_before_exit"] == pytest.approx(1.1)
+    assert diagnostic["mfe_r_after_stop_24h"] == pytest.approx(2.1)
+    assert diagnostic["time_from_stop_to_1r_hours"] == pytest.approx(1.0)
+    assert diagnostic["time_from_stop_to_2r_hours"] == pytest.approx(1.5)
