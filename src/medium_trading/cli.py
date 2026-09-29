@@ -16,6 +16,11 @@ from medium_trading.config import Settings
 from medium_trading.data import import_dukascopy, load_candles, save_candles
 from medium_trading.data.dukascopy_download import download_m30
 from medium_trading.data.oanda import OandaHistoryClient
+from medium_trading.ml_filter import (
+    evaluation_payload as ml_evaluation_payload,
+    evaluate_mean_reversion_ml_filter,
+    extract_mean_reversion_samples,
+)
 from medium_trading.strategy import (
     MeanReversionStrategy,
     TimeSeriesMomentumStrategy,
@@ -126,6 +131,23 @@ def main() -> None:
     forward.add_argument("--max-holding-bars", type=int)
     forward.add_argument("--json", dest="json_output")
 
+    ml_evaluate = subparsers.add_parser("ml-evaluate")
+    ml_evaluate.add_argument(
+        "--dataset",
+        action="append",
+        required=True,
+        help="Repeatable SYMBOL=CSV using frozen 2020-2025 research history",
+    )
+    ml_evaluate.add_argument(
+        "--cost",
+        action="append",
+        default=[],
+        help="Optional repeatable SYMBOL=PIPS override",
+    )
+    ml_evaluate.add_argument("--default-cost-pips", type=float, default=1.2)
+    ml_evaluate.add_argument("--risk", type=float, default=0.005)
+    ml_evaluate.add_argument("--json", dest="json_output")
+
     args = parser.parse_args()
     if args.command == "download-dukascopy":
         _download_dukascopy(args)
@@ -139,6 +161,8 @@ def main() -> None:
         _evaluate(args)
     elif args.command == "forward-evaluate":
         _forward_evaluate(args)
+    elif args.command == "ml-evaluate":
+        _ml_evaluate(args)
 
 
 def _download_dukascopy(args: argparse.Namespace) -> None:
@@ -321,6 +345,47 @@ def _forward_evaluate(args: argparse.Namespace) -> None:
         print(f"wrote forward evaluation report to {output}")
 
 
+def _ml_evaluate(args: argparse.Namespace) -> None:
+    datasets = _parse_assignments(args.dataset, "dataset")
+    costs = {
+        symbol: float(value)
+        for symbol, value in _parse_assignments(args.cost, "cost").items()
+    }
+
+    _, max_holding_bars = _strategy_backtest_defaults("mean-reversion")
+    samples = []
+    for symbol, filename in datasets.items():
+        config = BacktestConfig(
+            risk_fraction=args.risk,
+            target_r=2.0,
+            max_holding_bars=max_holding_bars,
+            round_trip_cost_pips=costs.get(symbol, args.default_cost_pips),
+        )
+        samples.extend(
+            extract_mean_reversion_samples(
+                symbol=symbol,
+                candles=load_candles(filename),
+                config=config,
+            )
+        )
+
+    evaluation = evaluate_mean_reversion_ml_filter(samples)
+    _print_ml_evaluation(evaluation)
+
+    if args.json_output:
+        output = Path(args.json_output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(
+            json.dumps(
+                ml_evaluation_payload(evaluation),
+                indent=2,
+                sort_keys=True,
+            ),
+            encoding="utf-8",
+        )
+        print(f"wrote ML evaluation report to {output}")
+
+
 def _strategy_from_name(name: str) -> Strategy:
     if name == "trend-pullback":
         return TrendPullbackStrategy()
@@ -435,6 +500,31 @@ def _print_forward_evaluations(evaluations: list[ForwardEvaluation]) -> None:
                 f"{report.net_r:>9.2f} {gross_pf:>7} {net_pf:>7} "
                 f"{report.max_drawdown:>7.1%}"
             )
+
+
+def _print_ml_evaluation(evaluation) -> None:
+    header = (
+        f"{'year':<6} {'train':>7} {'test':>7} {'select':>7} "
+        f"{'baseR':>9} {'mlR':>9} {'ml2xR':>9} {'mlPF':>7} {'ml2xPF':>8}"
+    )
+    print(header)
+    print("-" * len(header))
+
+    for fold in evaluation.folds:
+        print(
+            f"{fold.test_year:<6} {fold.train_samples:>7} {fold.test_samples:>7} "
+            f"{fold.selected_samples:>7} {fold.baseline.net_r:>9.2f} "
+            f"{fold.model.net_r:>9.2f} {fold.model_2x_costs.net_r:>9.2f} "
+            f"{fold.model.profit_factor:>7.2f} "
+            f"{fold.model_2x_costs.profit_factor:>8.2f}"
+        )
+
+    print(
+        "combined: "
+        f"baseline={evaluation.combined_baseline.net_r:.2f}R, "
+        f"ml={evaluation.combined_model.net_r:.2f}R, "
+        f"ml_2x={evaluation.combined_model_2x_costs.net_r:.2f}R"
+    )
 
 
 def _forward_evaluation_payload(evaluation: ForwardEvaluation) -> dict[str, object]:
