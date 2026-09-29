@@ -320,3 +320,7 @@ def test_trade_end_prevents_signals_after_forward_window() -> None:
 def test_index_cfd_cost_unit_uses_whole_price_points() -> None:
     assert pip_size("USA500.IDX/USD") == 1.0
     assert pip_size("USATECH.IDX/USD") == 1.0
+
+
+def test_gold_cost_unit_uses_one_cent_price_increment() -> None:
+    assert pip_size("XAU/USD") == 0.01
