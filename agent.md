@@ -13,7 +13,7 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 - Legacy FX universe: EUR/USD, GBP/USD, USD/JPY, AUD/USD plus four external FX pairs used in validation.
 - Current market: Crypto, starting with BTC/USD.
 - Core data timeframe for the current candidate: 30m.
-- Current research candidate: frozen BTC/USD UTC Daily Volatility Expansion.
+- Current research candidate: frozen BTC/USD rolling intraday momentum continuation.
 - Starting equity model: USD 1,000.
 - Default risk: 0.5% of equity per trade.
 - Maximum combined open risk: 1.0% of equity.
@@ -69,26 +69,31 @@ The frozen Gold / XAU/USD New York momentum-continuation baseline failed the Dai
 
 The frozen Gold / XAU/USD New York opening exhaustion / reversal baseline also failed the Daily Income Gate. It produced only 104 trades across 773 eligible sessions, negative net R, net PF below 1, negative 2x-cost results, and zero positive yearly folds. Gold is CLOSED for the current research cycle; do not tune the three inspected gold hypotheses on 2023-2025 data.
 
-The current frozen crypto hypothesis is BTC/USD UTC Daily Volatility Expansion:
-- crypto daily accounting uses UTC calendar days, not America/New_York sessions;
-- crypto history must include Saturdays as well as Sundays; the downloader keeps all seven UTC days for BTC/USD and ETH/USD;
-- reference range: eight complete M30 candles from 00:00 through 03:30 UTC, representing 00:00-04:00 UTC;
-- measure ATR14 on M30 data as of the 04:00 UTC reference close;
-- breakout window: first qualifying M30 close after 04:00 and through 18:00 UTC;
-- LONG requires the first close at least 0.10 ATR14 above the reference high;
-- SHORT requires the first close at least 0.10 ATR14 below the reference low;
-- if a qualifying first breakout exists, later breakouts that UTC day are ignored;
+The first frozen BTC/USD UTC Daily Volatility Expansion baseline failed the Daily Income Gate and is REJECTED. It produced 665 trades but negative net R and negative 2x-cost results; only one yearly fold was positive. Do not tune its fixed 00:00-04:00 UTC range after observing this result.
+
+The uploaded BTC/USD history also exposed material historical-data fragmentation, especially in 2023. For crypto daily-income evaluation, an eligible UTC day must now contain at least 40 of the possible 48 M30 bars. Days below that coverage threshold are excluded from the session denominator; missing bars are never synthesized. Strategy signals additionally require contiguous recent M30 history when their logic depends on rolling momentum.
+
+The current frozen crypto hypothesis is BTC/USD rolling intraday momentum continuation:
+- crypto daily accounting uses UTC calendar days;
+- eligible session day: at least 40 M30 candles in that UTC day;
+- decisions are allowed from 02:00 through 22:00 UTC;
+- trend state uses the eight M30 candles immediately before the pullback, a rolling 4-hour window rather than a fixed early-day range;
+- absolute first-open to last-close trend move must be at least 0.75 ATR14;
+- at least 5 of those 8 trend candles must have candle-body direction matching the trend;
+- the next M30 candle must be counter-directional and its extreme may retrace no more than 50% of the rolling trend move;
+- the immediately following M30 candle must resume in the trend direction and close through the pullback high for LONG or pullback low for SHORT;
+- the last 15 M30 candles used by the setup must be contiguous with exact 30-minute spacing;
 - entry: next M30 open;
-- stop: midpoint of the 00:00-04:00 UTC reference range;
+- stop: pullback low for LONG or pullback high for SHORT;
 - target: 1.5R;
 - maximum holding: 8 M30 bars (4 hours);
-- maximum one volatility-expansion attempt per UTC day;
+- maximum one momentum-continuation attempt per UTC day;
 - default risk remains 0.5% per trade;
-- BTC/USD and ETH/USD research pip size is 1.0 USD;
-- modeled BTC/USD round-trip research cost is frozen at 50 USD price points; 2x stress is 100 USD. This is a conservative research assumption, not a broker spread quote;
-- fixed evaluation years are 2023, 2024 and 2025. If the Daily Income Gate passes, 2026 is reserved for later temporal-forward confirmation.
+- BTC/USD research pip size remains 1.0 USD;
+- modeled round-trip research cost remains frozen at 50 USD price points; 2x stress is 100 USD;
+- fixed evaluation years remain 2023, 2024 and 2025.
 
-Do not tune the UTC reference range, 0.10 ATR extension, midpoint stop, target, holding period, decision cutoff or 50 USD cost after viewing the baseline result. This crypto hypothesis receives one frozen baseline plus at most one materially justified modification only if the baseline is close but fails the gate.
+Do not tune the 4-hour trend window, 0.75 ATR threshold, 5-of-8 directional rule, 50% retracement limit, decision window, target, stop, holding period or 50 USD cost after viewing the baseline result. This is a separate crypto hypothesis and receives one frozen baseline plus at most one materially justified modification only if the baseline is close but fails the gate.
 
 Daily Income Gate is frozen before the first result. A strategy passes only if all conditions hold across the combined fixed test years:
 - at least 250 eligible session days;
