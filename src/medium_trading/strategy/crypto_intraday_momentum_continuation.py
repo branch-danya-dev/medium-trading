@@ -1,4 +1,5 @@
 from datetime import time, timedelta
+from itertools import pairwise
 
 from medium_trading.domain import Candle, Side, Signal, StrategyContext
 
@@ -136,7 +137,7 @@ class CryptoIntradayMomentumContinuationStrategy:
     def _is_contiguous(candles: tuple[Candle, ...]) -> bool:
         return all(
             current.timestamp - previous.timestamp == timedelta(minutes=30)
-            for previous, current in zip(candles, candles[1:])
+            for previous, current in pairwise(candles)
         )
 
     @staticmethod
