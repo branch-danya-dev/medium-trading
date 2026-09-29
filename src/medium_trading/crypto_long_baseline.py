@@ -236,7 +236,9 @@ def _trade_diagnostic(
     horizon_end = trade.entry_time + timedelta(hours=DIAGNOSTIC_HORIZON_HOURS)
     horizon = tuple(
         candle
-        for candle in candles[entry_index:]
+        for candle in candles[
+            entry_index : entry_index + DIAGNOSTIC_HORIZON_HOURS * 2 + 2
+        ]
         if candle.timestamp < horizon_end
     )
     risk_distance = abs(trade.entry - trade.stop)
