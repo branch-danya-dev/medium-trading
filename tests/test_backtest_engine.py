@@ -371,3 +371,85 @@ def test_entry_relative_stop_floor_uses_actual_next_open() -> None:
     trade = report.trades[0]
     assert trade.entry == pytest.approx(1.1010)
     assert trade.stop == pytest.approx(1.0990)
+
+
+
+def test_bps_cost_model_separates_fee_and_slippage() -> None:
+    candles = tuple(
+        _candle(
+            index,
+            open_=100_000,
+            high=102_100 if index == 16 else 100_100,
+            low=99_900,
+            close=100_000,
+        )
+        for index in range(20)
+    )
+
+    report = run_backtest(
+        symbol="BTC/USD",
+        candles_30m=candles,
+        strategy=OneShotStrategy(stop=99_000),
+        config=BacktestConfig(
+            target_r=2.0,
+            fee_bps_per_side=5.5,
+            slippage_bps_per_side=2.0,
+            minimum_cost_multiple=0.01,
+        ),
+    )
+
+    trade = report.trades[0]
+    assert trade.exit_reason == "target"
+    assert trade.gross_r == pytest.approx(2.0)
+    assert trade.fee_r == pytest.approx((100_000 + 102_000) * 0.00055 / 1_000)
+    assert trade.slippage_r == pytest.approx(
+        (100_000 + 102_000) * 0.0002 / 1_000
+    )
+    assert trade.cost_r == pytest.approx(trade.fee_r + trade.slippage_r)
+
+
+def test_wall_clock_holding_exits_at_real_elapsed_hour() -> None:
+    candles = tuple(_candle(index) for index in range(30))
+
+    report = run_backtest(
+        symbol="EUR/USD",
+        candles_30m=candles,
+        strategy=OneShotStrategy(stop=1.0900),
+        config=BacktestConfig(
+            target_r=100.0,
+            round_trip_cost_pips=1.0,
+            minimum_cost_multiple=0.01,
+            max_holding_bars=20,
+            max_holding_minutes=60,
+        ),
+    )
+
+    trade = report.trades[0]
+    assert trade.exit_reason == "timeout"
+    assert trade.exit_time - trade.entry_time == timedelta(hours=1)
+
+
+def test_signal_is_rejected_when_future_execution_window_has_gap() -> None:
+    candles = [_candle(index) for index in range(24)]
+    gap = candles[17]
+    candles[17] = Candle(
+        timestamp=gap.timestamp + timedelta(minutes=30),
+        open=gap.open,
+        high=gap.high,
+        low=gap.low,
+        close=gap.close,
+    )
+
+    report = run_backtest(
+        symbol="EUR/USD",
+        candles_30m=tuple(candles),
+        strategy=OneShotStrategy(),
+        config=BacktestConfig(
+            round_trip_cost_pips=1.0,
+            required_contiguous_future_bars=4,
+        ),
+    )
+
+    assert report.signal_count == 1
+    assert report.gap_signal_rejections == 1
+    assert not report.trades
