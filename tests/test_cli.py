@@ -160,3 +160,32 @@ def test_direct_ml_final_parser_uses_frozen_research_command(monkeypatch) -> Non
     args = captured[0]
     assert args.default_cost_pips == 1.2
     assert args.risk == 0.005
+
+
+def test_opening_range_breakout_backtest_defaults() -> None:
+    assert cli._strategy_backtest_defaults("opening-range-breakout") == (1.5, 6)
+
+
+def test_daily_evaluate_parser_uses_opening_range_breakout(monkeypatch) -> None:
+    captured = []
+
+    monkeypatch.setattr(cli, "_daily_evaluate", captured.append)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "medium-trading",
+            "daily-evaluate",
+            "--strategy",
+            "opening-range-breakout",
+            "--dataset",
+            "USA500.IDX/USD=data/index/USA500.IDX_USD_M30.csv",
+        ],
+    )
+
+    cli.main()
+
+    args = captured[0]
+    assert args.strategy == "opening-range-breakout"
+    assert args.default_cost == 1.0
+    assert args.risk == 0.005
