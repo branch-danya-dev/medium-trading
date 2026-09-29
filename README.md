@@ -8,8 +8,8 @@ The first version is intentionally small:
 
 - research markets are tested separately rather than forcing one universal strategy;
 - legacy FX research remains reproducible;
-- current market: US index CFDs, with USA500 ORB closed and USATECH under one final test;
-- current candidate: frozen USATECH 30m Opening Range Breakout quality filter;
+- current market: Gold / XAU/USD;
+- current candidate: frozen 30m London-reference to New York breakout;
 - daily-income consistency is now a primary evaluation target;
 - starting equity model: USD 1,000;
 - default risk: 0.5% per trade, 1.0% maximum combined open risk;
@@ -402,8 +402,37 @@ Run the final USATECH ORB test:
       --cost USATECH.IDX/USD=3.0 ^
       --json artifacts/usatech_orb_quality_daily_eval.json
 
-The 10% threshold is frozen. If this variant fails any Daily Income Gate condition, US-index ORB is
-rejected and is not tuned again on these datasets.
+The final quality-filter variant also failed the gate, so US-index ORB is rejected and closed.
+
+The next market is Gold / XAU/USD. The first frozen gold candidate uses the 08:00-10:30 Europe/London
+reference range and trades only the first M30 close outside that range during 08:30-11:00
+America/New_York. Entry is the next M30 open, stop is the opposite side of the London range, target is
+1.5R, maximum holding is 6 M30 bars, and there is at most one attempt per session. If the complete
+five-bar London reference is missing, the day is skipped.
+
+XAU/USD costs use a 0.01 USD pip in the research engine. The ordinary frozen round-trip cost is 80 pips
+(0.80 USD price movement); the built-in 2x stress therefore uses 160 pips (1.60 USD).
+
+Download gold history:
+
+    medium-trading download-dukascopy ^
+      --symbol XAU/USD ^
+      --from 2020-01-01 ^
+      --to 2025-12-31 ^
+      --workers 4 ^
+      --output-dir data/gold
+
+Run the fixed 2023-2025 daily-income baseline:
+
+    medium-trading daily-evaluate ^
+      --strategy gold-london-ny-breakout ^
+      --dataset XAU/USD=data/gold/XAU_USD_M30.csv ^
+      --cost XAU/USD=80 ^
+      --json artifacts/gold_london_ny_breakout_daily_eval.json
+
+Do not tune the London range, New York window, 1.5R target, 3-hour holding period or 80-pip cost after
+reading the baseline result. The gold hypothesis gets at most one materially justified modification if
+the baseline is close but fails.
 
 The daily gate is strict and conjunctive: at least 250 eligible sessions, at least 300 trades, >=70%
 active-session rate, >=45% profitable active days, positive average net R/session, net PF >=1.15,
