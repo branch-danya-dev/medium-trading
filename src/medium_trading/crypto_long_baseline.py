@@ -44,6 +44,7 @@ def evaluate_btc_long_baseline(
 def evaluate_btc_long_v1_1_corrected(
     *,
     candles: tuple[Candle, ...],
+    symbol: str = "BTC/USD",
     fee_bps_per_side: float = BTC_TAKER_FEE_BPS_PER_SIDE,
     slippage_bps_per_side: float = BTC_SLIPPAGE_BPS_PER_SIDE,
     starting_equity: float = 10_000.0,
@@ -51,6 +52,7 @@ def evaluate_btc_long_v1_1_corrected(
 ) -> dict[str, object]:
     return _evaluate_btc_long(
         candles=candles,
+        symbol=symbol,
         strategy=CryptoTrendLongV11Strategy(),
         strategy_name="crypto-trend-long-v1.1-corrected",
         stop_rule=(
@@ -91,6 +93,7 @@ def _evaluate_btc_long(
     *,
     candles: tuple[Candle, ...],
     strategy: Strategy,
+    symbol: str = "BTC/USD",
     strategy_name: str,
     stop_rule: str,
     round_trip_cost_usd: float,
@@ -118,7 +121,7 @@ def _evaluate_btc_long(
         required_contiguous_future_bars=required_contiguous_future_bars,
     )
     report = run_backtest(
-        symbol="BTC/USD",
+        symbol=symbol,
         candles_30m=candles,
         strategy=strategy,
         config=config,
@@ -130,7 +133,7 @@ def _evaluate_btc_long(
     complete_days = _complete_utc_days(candles)
 
     return {
-        "symbol": "BTC/USD",
+        "symbol": symbol,
         "strategy": strategy_name,
         "trade_start": TRADE_START.isoformat(),
         "trade_end": TRADE_END.isoformat(),
