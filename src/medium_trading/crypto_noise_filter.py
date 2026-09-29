@@ -18,8 +18,10 @@ from medium_trading.crypto_long_baseline import (
     TRADE_START,
 )
 from medium_trading.domain import Candle
-from medium_trading.strategy.crypto_trend_long import CryptoTrendLongStrategy
-from medium_trading.strategy.crypto_trend_long import CryptoTrendLongV11Strategy
+from medium_trading.strategy.crypto_trend_long import (
+    CryptoTrendLongStrategy,
+    CryptoTrendLongV11Strategy,
+)
 
 FEATURE_NAMES = (
     "return_1_atr",
