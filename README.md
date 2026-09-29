@@ -9,7 +9,7 @@ The first version is intentionally small:
 - market: spot FX;
 - symbols: EUR/USD, GBP/USD, USD/JPY, AUD/USD;
 - core data timeframes: 4h, 1h, 30m;
-- current strategy candidate: 4h mean reversion / range trading;
+- current research candidate: frozen ML filter over 4h mean-reversion entries;
 - starting equity model: USD 1,000;
 - default risk: 0.5% per trade, 1.0% maximum combined open risk;
 - decisions are made from closed candles, not tick/order-book noise.
@@ -117,18 +117,27 @@ negative across all four MVP FX pairs.
 4H Time-Series Momentum has also been rejected by the historical gate: gross out-of-sample results were
 negative across all four MVP FX pairs.
 
-The current candidate is 4H Mean Reversion / Range Trading with parameters fixed before the first
-evaluation:
+4H Mean Reversion / Range Trading has also been rejected as a universal FX strategy after a mixed
+cross-instrument holdout and a negative frozen 2026 temporal forward test across eight pairs. The rule
+set remains available as a reproducible setup generator for the next research step.
 
-- decision only when a new 4H candle closes;
-- mean and standard deviation from the previous 20 completed 4H closes;
-- entry when the current 4H close is at least 2 standard deviations away from that prior mean;
-- range filter: 30-bar efficiency ratio at or below 0.35;
-- ATR14 measured on 4H candles;
-- stop at 1.5 x ATR14 from the signal close;
-- target fixed at the prior 20-bar mean at signal time;
-- maximum holding time is 192 M30 bars (4 days);
-- 1H and 30m are not used as entry triggers.
+The current research candidate is a frozen ML filter over the existing Mean Reversion trade stream.
+It predicts realized net R for an already-valid Mean Reversion trade and accepts it only when predicted
+net R is above 0.0R. Symbol identity is not a feature.
+
+The first ML baseline is fixed before evaluation:
+
+- model: HistGradientBoostingRegressor;
+- learning rate 0.05, 100 iterations, 7 max leaf nodes, minimum 20 samples per leaf;
+- L2 regularization 1.0, early stopping disabled, random state 42;
+- features: side, absolute z-score, efficiency ratio, ATR/price, target distance in ATR, reward/risk,
+  modeled cost in R, 1/3/6-bar returns in ATR, 10-bar range in ATR, and current 4H body in ATR;
+- expanding-window walk-forward test years: 2023, 2024 and 2025;
+- training labels must be fully known before each test year begins;
+- ordinary costs and a same-trade 2x-cost stress result are reported.
+
+These historical folds are research evidence, not a pristine final holdout. The already-inspected 2026
+period cannot be reused as final proof for the ML model.
 
 ## Backtest
 
@@ -206,6 +215,35 @@ candles after the end exist only so open trades can finish normally.
 
 The command reports the frozen forward window at ordinary modeled costs and at 2x costs without a new
 train/validation/OOS split.
+
+## ML filter research
+
+Install the optional ML research dependency:
+
+    pip install -e ".[ml]"
+
+The first frozen ML test pools the eight historical FX datasets but does not include symbol identity as
+a feature. It trains only on trades whose outcomes were already known before each calendar-year test
+fold and compares the filtered subset against the unfiltered Mean Reversion baseline.
+
+    medium-trading ml-evaluate ^
+      --dataset EUR/USD=data/EUR_USD_M30.csv ^
+      --dataset GBP/USD=data/GBP_USD_M30.csv ^
+      --dataset USD/JPY=data/USD_JPY_M30.csv ^
+      --dataset AUD/USD=data/AUD_USD_M30.csv ^
+      --dataset USD/CAD=data/USD_CAD_M30.csv ^
+      --dataset NZD/USD=data/NZD_USD_M30.csv ^
+      --dataset EUR/GBP=data/EUR_GBP_M30.csv ^
+      --dataset EUR/JPY=data/EUR_JPY_M30.csv ^
+      --cost EUR/USD=1.0 --cost GBP/USD=1.2 ^
+      --cost USD/JPY=1.0 --cost AUD/USD=1.2 ^
+      --cost USD/CAD=1.5 --cost NZD/USD=1.5 ^
+      --cost EUR/GBP=1.5 --cost EUR/JPY=1.5 ^
+      --json artifacts/mean_reversion_ml_walk_forward.json
+
+Do not tune the feature list, model parameters, threshold, or pair selection after reading this first
+result. A positive historical walk-forward would justify a later paper-forward test, not a profitability
+claim.
 
 ## Status
 
