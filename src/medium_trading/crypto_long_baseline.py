@@ -16,6 +16,11 @@ TRADE_END = datetime(2025, 12, 31, 23, 59, 59, tzinfo=UTC)
 MIN_COMPLETE_DAY_BARS = 40
 DIAGNOSTIC_HORIZON_HOURS = 24
 ATR_PERIOD = 14
+BTC_TAKER_FEE_BPS_PER_SIDE = 5.5
+BTC_SLIPPAGE_BPS_PER_SIDE = 2.0
+BTC_MAX_HOLDING_MINUTES = 24 * 60
+BTC_REQUIRED_CONTEXT_BARS = 192
+BTC_REQUIRED_FUTURE_BARS = 48
 
 
 def evaluate_btc_long_baseline(
@@ -31,6 +36,32 @@ def evaluate_btc_long_baseline(
         strategy_name="crypto-trend-long",
         stop_rule="pullback low",
         round_trip_cost_usd=round_trip_cost_usd,
+        starting_equity=starting_equity,
+        risk_fraction=risk_fraction,
+    )
+
+
+def evaluate_btc_long_v1_1_corrected(
+    *,
+    candles: tuple[Candle, ...],
+    fee_bps_per_side: float = BTC_TAKER_FEE_BPS_PER_SIDE,
+    slippage_bps_per_side: float = BTC_SLIPPAGE_BPS_PER_SIDE,
+    starting_equity: float = 10_000.0,
+    risk_fraction: float = 0.005,
+) -> dict[str, object]:
+    return _evaluate_btc_long(
+        candles=candles,
+        strategy=CryptoTrendLongV11Strategy(),
+        strategy_name="crypto-trend-long-v1.1-corrected",
+        stop_rule=(
+            "lower of pullback low or actual next-open entry minus 1.0 x M30 ATR14"
+        ),
+        round_trip_cost_usd=0.0,
+        fee_bps_per_side=fee_bps_per_side,
+        slippage_bps_per_side=slippage_bps_per_side,
+        max_holding_minutes=BTC_MAX_HOLDING_MINUTES,
+        required_contiguous_context_bars=BTC_REQUIRED_CONTEXT_BARS,
+        required_contiguous_future_bars=BTC_REQUIRED_FUTURE_BARS,
         starting_equity=starting_equity,
         risk_fraction=risk_fraction,
     )
@@ -65,16 +96,26 @@ def _evaluate_btc_long(
     round_trip_cost_usd: float,
     starting_equity: float,
     risk_fraction: float,
+    fee_bps_per_side: float | None = None,
+    slippage_bps_per_side: float = 0.0,
+    max_holding_minutes: int | None = None,
+    required_contiguous_context_bars: int = 0,
+    required_contiguous_future_bars: int = 0,
 ) -> dict[str, object]:
     config = BacktestConfig(
         starting_equity=starting_equity,
         risk_fraction=risk_fraction,
         target_r=2.0,
         max_holding_bars=48,
-        round_trip_cost_pips=round_trip_cost_usd,
+        round_trip_cost_pips=max(round_trip_cost_usd, 0.000001),
+        fee_bps_per_side=fee_bps_per_side,
+        slippage_bps_per_side=slippage_bps_per_side,
         # Diagnostic baseline: expose micro/noise setups instead of hiding them
         # behind the old 8x expected-move cost gate. Costs are still deducted.
         minimum_cost_multiple=0.01,
+        max_holding_minutes=max_holding_minutes,
+        required_contiguous_context_bars=required_contiguous_context_bars,
+        required_contiguous_future_bars=required_contiguous_future_bars,
     )
     report = run_backtest(
         symbol="BTC/USD",
@@ -99,9 +140,21 @@ def _evaluate_btc_long(
             "noise_filter": False,
             "starting_equity_usd": starting_equity,
             "risk_fraction": risk_fraction,
-            "round_trip_cost_usd": round_trip_cost_usd,
+            "cost_model": (
+                "notional_bps" if fee_bps_per_side is not None else "fixed_price"
+            ),
+            "round_trip_cost_usd": (
+                round_trip_cost_usd if fee_bps_per_side is None else None
+            ),
+            "fee_bps_per_side": fee_bps_per_side,
+            "slippage_bps_per_side": slippage_bps_per_side,
             "target_r": 2.0,
             "max_holding_hours": 24,
+            "max_holding_mode": (
+                "wall_clock" if max_holding_minutes is not None else "bar_count"
+            ),
+            "required_contiguous_context_bars": required_contiguous_context_bars,
+            "required_contiguous_future_bars": required_contiguous_future_bars,
             "minimum_cost_multiple": 0.01,
             "stop_rule": stop_rule,
         },
@@ -135,6 +188,9 @@ def _report_summary(
         if item["stop_distance_atr"] is not None
     )
     cost_values = tuple(float(item["cost_r"]) for item in diagnostics)
+    fee_values = tuple(float(item["fee_r"]) for item in diagnostics)
+    slippage_values = tuple(float(item["slippage_r"]) for item in diagnostics)
+    holding_values = tuple(float(item["holding_hours"]) for item in diagnostics)
     net_usd = report.final_equity - report.starting_equity
 
     return {
@@ -145,6 +201,8 @@ def _report_summary(
         "gross_r": report.gross_r,
         "net_r": report.net_r,
         "total_cost_r": report.total_cost_r,
+        "total_fee_r": sum(fee_values),
+        "total_slippage_r": sum(slippage_values),
         "gross_profit_factor": report.gross_profit_factor,
         "profit_factor": report.profit_factor,
         "win_rate": report.win_rate,
@@ -162,6 +220,11 @@ def _report_summary(
         "median_mae_r_24h": median(mae_values) if mae_values else 0.0,
         "average_cost_r": mean(cost_values) if cost_values else 0.0,
         "median_cost_r": median(cost_values) if cost_values else 0.0,
+        "average_fee_r": mean(fee_values) if fee_values else 0.0,
+        "average_slippage_r": mean(slippage_values) if slippage_values else 0.0,
+        "average_holding_hours": mean(holding_values) if holding_values else 0.0,
+        "gap_context_rejections": report.gap_context_rejections,
+        "gap_signal_rejections": report.gap_signal_rejections,
         "average_stop_distance_atr": (
             mean(stop_distance_atr) if stop_distance_atr else 0.0
         ),
@@ -211,6 +274,8 @@ def _year_summary(
         "gross_r": sum(gross),
         "net_r": sum(net),
         "total_cost_r": sum(trade.cost_r for trade in year_trades),
+        "total_fee_r": sum(trade.fee_r for trade in year_trades),
+        "total_slippage_r": sum(trade.slippage_r for trade in year_trades),
         "gross_profit_factor": _profit_factor(gross),
         "profit_factor": _profit_factor(net),
         "win_rate": (
@@ -302,8 +367,14 @@ def _trade_diagnostic(
         "exit": trade.exit,
         "gross_r": trade.gross_r,
         "cost_r": trade.cost_r,
+        "fee_r": trade.fee_r,
+        "slippage_r": trade.slippage_r,
         "net_r": trade.net_r,
         "exit_reason": trade.exit_reason,
+        "holding_hours": (
+            trade.exit_time - trade.entry_time
+        ).total_seconds()
+        / 3600.0,
         "atr14_at_entry": atr_at_entry,
         "stop_distance_atr": stop_distance_atr,
         "mfe_r_before_exit": mfe_before_exit,
