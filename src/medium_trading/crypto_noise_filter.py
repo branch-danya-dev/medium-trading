@@ -625,13 +625,13 @@ def _classification_metrics(
     predicted_clean = true_positive + false_positive
     actual_clean = true_positive + false_negative
     return ClassificationMetrics(
-        candidates=int(len(truth)),
-        predicted_clean=int(predicted_clean),
-        actual_clean=int(actual_clean),
-        true_positive=int(true_positive),
-        false_positive=int(false_positive),
-        false_negative=int(false_negative),
-        true_negative=int(true_negative),
+        candidates=len(truth),
+        predicted_clean=predicted_clean,
+        actual_clean=actual_clean,
+        true_positive=true_positive,
+        false_positive=false_positive,
+        false_negative=false_negative,
+        true_negative=true_negative,
         precision=float(
             true_positive / predicted_clean
             if predicted_clean
