@@ -11,8 +11,8 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 
 - Market: spot FX.
 - Symbols: EUR/USD, GBP/USD, USD/JPY, AUD/USD.
-- Timeframes: 4h regime, 1h setup, 30m trigger.
-- Current strategy candidate: Volatility Breakout.
+- Core data timeframes: 4h, 1h, 30m.
+- Current strategy candidate: 4H Time-Series Momentum.
 - Starting equity model: USD 1,000.
 - Default risk: 0.5% of equity per trade.
 - Maximum combined open risk: 1.0% of equity.
@@ -24,7 +24,9 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 
 Trend Pullback has been evaluated and is REJECTED: it was negative before costs on out-of-sample data across all four MVP pairs. Do not tune or revive it without an explicit new research task.
 
-Volatility Breakout is the current fixed baseline candidate. Its initial parameters are locked before the first evaluation: 20-bar H1 Donchian channel, 30m range expansion versus ATR14, 1.5 ATR stop, 4h directional range-half filter. Do not tune these parameters on out-of-sample results.
+Volatility Breakout has been evaluated and is REJECTED: it was negative before costs on out-of-sample data across all four MVP pairs. Do not tune or revive it without an explicit new research task.
+
+4H Time-Series Momentum is the current fixed baseline candidate. Parameters are locked before its first evaluation: 30-bar 4H momentum lookback, signal only when a new 4H candle closes, ATR14 volatility estimate, 2 ATR stop, 3R target, and 240 M30 bars (5 days) maximum holding. It does not use 1H or 30m entry triggers. Do not tune these parameters on out-of-sample results.
 
 ## Architecture rules
 
