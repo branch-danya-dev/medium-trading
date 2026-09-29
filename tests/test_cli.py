@@ -65,3 +65,25 @@ def test_forward_evaluate_parser_requires_fixed_window(monkeypatch) -> None:
     assert args.trade_end == "2026-09-18"
     assert args.target_r is None
     assert args.max_holding_bars is None
+
+
+def test_ml_evaluate_parser_uses_fixed_research_command(monkeypatch) -> None:
+    captured = []
+
+    monkeypatch.setattr(cli, "_ml_evaluate", captured.append)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "medium-trading",
+            "ml-evaluate",
+            "--dataset",
+            "EUR/USD=data/EUR_USD_M30.csv",
+        ],
+    )
+
+    cli.main()
+
+    args = captured[0]
+    assert args.default_cost_pips == 1.2
+    assert args.risk == 0.005
