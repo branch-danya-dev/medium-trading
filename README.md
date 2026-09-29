@@ -9,7 +9,7 @@ The first version is intentionally small:
 - market: spot FX;
 - symbols: EUR/USD, GBP/USD, USD/JPY, AUD/USD;
 - decision timeframes: 4h regime, 1h setup, 30m trigger;
-- first strategy: trend pullback;
+- current strategy candidate: volatility breakout;
 - starting equity model: USD 1,000;
 - default risk: 0.5% per trade, 1.0% maximum combined open risk;
 - decisions are made from closed candles, not tick/order-book noise.
@@ -106,9 +106,22 @@ Browser exports remain supported:
 
 OANDA v20 remains optional and is not required for the MVP.
 
+## Strategy research
+
+Trend Pullback has been rejected by the historical gate: it was negative before costs on out-of-sample
+data across all four MVP FX pairs. It remains available only for reproducibility.
+
+The current candidate is Volatility Breakout with parameters fixed before the first evaluation:
+
+- 4h directional regime from the position of the last completed 4h close inside a 20-bar range;
+- 1h 20-bar Donchian breakout channel built only from bars known before the trigger candle;
+- 30m close beyond the channel with true-range expansion versus ATR14;
+- stop at 1.5 x ATR14 from the trigger close;
+- common 2R target and 24h maximum holding period from the existing backtest engine.
+
 ## Backtest
 
-    medium-trading backtest --symbol EUR/USD --data data/EUR_USD_M30.csv --round-trip-cost-pips 1.2
+    medium-trading backtest --strategy volatility-breakout --symbol EUR/USD --data data/EUR_USD_M30.csv --round-trip-cost-pips 1.2
 
 Current simulation assumptions are deliberately conservative:
 
@@ -127,6 +140,7 @@ The evaluation command is the default strategy gate. It runs each pair through a
 60% train / 20% validation / 20% out-of-sample split and repeats the out-of-sample run at 2x costs.
 
     medium-trading evaluate ^
+      --strategy volatility-breakout ^
       --dataset EUR/USD=data/EUR_USD_M30.csv ^
       --dataset GBP/USD=data/GBP_USD_M30.csv ^
       --dataset USD/JPY=data/USD_JPY_M30.csv ^
@@ -135,7 +149,7 @@ The evaluation command is the default strategy gate. It runs each pair through a
       --cost GBP/USD=1.2 ^
       --cost USD/JPY=1.0 ^
       --cost AUD/USD=1.2 ^
-      --json artifacts/trend_pullback_eval.json
+      --json artifacts/volatility_breakout_eval.json
 
 Validation and out-of-sample segments receive historical candles before their start only as indicator
 warmup. No trade may start in that warmup. The out-of-sample segment must not be used for parameter
