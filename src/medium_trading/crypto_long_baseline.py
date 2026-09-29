@@ -1,16 +1,21 @@
 from collections import Counter
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from statistics import mean, median
 
 from medium_trading.backtest.engine import run_backtest
 from medium_trading.backtest.model import BacktestConfig, BacktestReport, BacktestTrade
 from medium_trading.domain import Candle
-from medium_trading.strategy.crypto_trend_long import CryptoTrendLongStrategy
+from medium_trading.strategy.base import Strategy
+from medium_trading.strategy.crypto_trend_long import (
+    CryptoTrendLongStrategy,
+    CryptoTrendLongV11Strategy,
+)
 
 TRADE_START = datetime(2023, 1, 1, tzinfo=UTC)
 TRADE_END = datetime(2025, 12, 31, 23, 59, 59, tzinfo=UTC)
 MIN_COMPLETE_DAY_BARS = 40
-DIAGNOSTIC_HORIZON_BARS = 48
+DIAGNOSTIC_HORIZON_HOURS = 24
+ATR_PERIOD = 14
 
 
 def evaluate_btc_long_baseline(
@@ -20,34 +25,72 @@ def evaluate_btc_long_baseline(
     starting_equity: float = 10_000.0,
     risk_fraction: float = 0.005,
 ) -> dict[str, object]:
+    return _evaluate_btc_long(
+        candles=candles,
+        strategy=CryptoTrendLongStrategy(),
+        strategy_name="crypto-trend-long",
+        stop_rule="pullback low",
+        round_trip_cost_usd=round_trip_cost_usd,
+        starting_equity=starting_equity,
+        risk_fraction=risk_fraction,
+    )
+
+
+def evaluate_btc_long_v1_1(
+    *,
+    candles: tuple[Candle, ...],
+    round_trip_cost_usd: float = 50.0,
+    starting_equity: float = 10_000.0,
+    risk_fraction: float = 0.005,
+) -> dict[str, object]:
+    return _evaluate_btc_long(
+        candles=candles,
+        strategy=CryptoTrendLongV11Strategy(),
+        strategy_name="crypto-trend-long-v1.1",
+        stop_rule=(
+            "lower of pullback low or actual next-open entry minus 1.0 x M30 ATR14"
+        ),
+        round_trip_cost_usd=round_trip_cost_usd,
+        starting_equity=starting_equity,
+        risk_fraction=risk_fraction,
+    )
+
+
+def _evaluate_btc_long(
+    *,
+    candles: tuple[Candle, ...],
+    strategy: Strategy,
+    strategy_name: str,
+    stop_rule: str,
+    round_trip_cost_usd: float,
+    starting_equity: float,
+    risk_fraction: float,
+) -> dict[str, object]:
     config = BacktestConfig(
         starting_equity=starting_equity,
         risk_fraction=risk_fraction,
         target_r=2.0,
         max_holding_bars=48,
         round_trip_cost_pips=round_trip_cost_usd,
-        # Diagnostic baseline: do not hide micro/noise setups behind the old 8x
-        # expected-move cost gate. Costs are still deducted from every trade.
+        # Diagnostic baseline: expose micro/noise setups instead of hiding them
+        # behind the old 8x expected-move cost gate. Costs are still deducted.
         minimum_cost_multiple=0.01,
     )
     report = run_backtest(
         symbol="BTC/USD",
         candles_30m=candles,
-        strategy=CryptoTrendLongStrategy(),
+        strategy=strategy,
         config=config,
         trade_start=TRADE_START,
         trade_end=TRADE_END,
     )
 
-    diagnostics = tuple(
-        _trade_diagnostic(candles, trade)
-        for trade in report.trades
-    )
+    diagnostics = tuple(_trade_diagnostic(candles, trade) for trade in report.trades)
     complete_days = _complete_utc_days(candles)
 
     return {
         "symbol": "BTC/USD",
-        "strategy": "crypto-trend-long",
+        "strategy": strategy_name,
         "trade_start": TRADE_START.isoformat(),
         "trade_end": TRADE_END.isoformat(),
         "assumptions": {
@@ -60,6 +103,7 @@ def evaluate_btc_long_baseline(
             "target_r": 2.0,
             "max_holding_hours": 24,
             "minimum_cost_multiple": 0.01,
+            "stop_rule": stop_rule,
         },
         "summary": _report_summary(
             report,
@@ -83,9 +127,14 @@ def _report_summary(
     mfe_values = tuple(float(item["mfe_r_24h"]) for item in diagnostics)
     mae_values = tuple(float(item["mae_r_24h"]) for item in diagnostics)
     post_exit_mfe = tuple(
-        float(item["post_exit_mfe_r_24h"])
-        for item in diagnostics
+        float(item["post_exit_mfe_r_24h"]) for item in diagnostics
     )
+    stop_distance_atr = tuple(
+        float(item["stop_distance_atr"])
+        for item in diagnostics
+        if item["stop_distance_atr"] is not None
+    )
+    cost_values = tuple(float(item["cost_r"]) for item in diagnostics)
     net_usd = report.final_equity - report.starting_equity
 
     return {
@@ -111,13 +160,26 @@ def _report_summary(
         "median_mfe_r_24h": median(mfe_values) if mfe_values else 0.0,
         "average_mae_r_24h": mean(mae_values) if mae_values else 0.0,
         "median_mae_r_24h": median(mae_values) if mae_values else 0.0,
+        "average_cost_r": mean(cost_values) if cost_values else 0.0,
+        "median_cost_r": median(cost_values) if cost_values else 0.0,
+        "average_stop_distance_atr": (
+            mean(stop_distance_atr) if stop_distance_atr else 0.0
+        ),
+        "median_stop_distance_atr": (
+            median(stop_distance_atr) if stop_distance_atr else 0.0
+        ),
         "reached_0_5r_24h_rate": _threshold_rate(mfe_values, 0.5),
         "reached_1r_24h_rate": _threshold_rate(mfe_values, 1.0),
         "reached_2r_24h_rate": _threshold_rate(mfe_values, 2.0),
         "reached_3r_24h_rate": _threshold_rate(mfe_values, 3.0),
         "stopped_then_reached_1r_after_exit": sum(
             item["exit_reason"] in {"stop", "stop_gap"}
-            and float(item["post_exit_mfe_r_24h"]) >= 1.0
+            and item["time_from_stop_to_1r_hours"] is not None
+            for item in diagnostics
+        ),
+        "stopped_then_reached_2r_after_exit": sum(
+            item["exit_reason"] in {"stop", "stop_gap"}
+            and item["time_from_stop_to_2r_hours"] is not None
             for item in diagnostics
         ),
         "exit_reasons": dict(Counter(trade.exit_reason for trade in report.trades)),
@@ -171,11 +233,12 @@ def _trade_diagnostic(
         for index, candle in enumerate(candles)
     }
     entry_index = by_timestamp[trade.entry_time]
-    last_index = min(
-        len(candles) - 1,
-        entry_index + DIAGNOSTIC_HORIZON_BARS - 1,
+    horizon_end = trade.entry_time + timedelta(hours=DIAGNOSTIC_HORIZON_HOURS)
+    horizon = tuple(
+        candle
+        for candle in candles[entry_index:]
+        if candle.timestamp < horizon_end
     )
-    horizon = candles[entry_index : last_index + 1]
     risk_distance = abs(trade.entry - trade.stop)
 
     highest = max(candle.high for candle in horizon)
@@ -183,10 +246,16 @@ def _trade_diagnostic(
     mfe_r = (highest - trade.entry) / risk_distance
     mae_r = (trade.entry - lowest) / risk_distance
 
+    through_exit = tuple(
+        candle for candle in horizon if candle.timestamp <= trade.exit_time
+    )
+    before_exit_high = max(candle.high for candle in through_exit)
+    before_exit_low = min(candle.low for candle in through_exit)
+    mfe_before_exit = (before_exit_high - trade.entry) / risk_distance
+    mae_before_exit = (trade.entry - before_exit_low) / risk_distance
+
     post_exit = tuple(
-        candle
-        for candle in horizon
-        if candle.timestamp >= trade.exit_time
+        candle for candle in horizon if candle.timestamp > trade.exit_time
     )
     post_exit_high = (
         max(candle.high for candle in post_exit)
@@ -194,6 +263,34 @@ def _trade_diagnostic(
         else trade.exit
     )
     post_exit_mfe_r = (post_exit_high - trade.entry) / risk_distance
+
+    is_stop = trade.exit_reason in {"stop", "stop_gap"}
+    mfe_after_stop = post_exit_mfe_r if is_stop else None
+    time_to_1r = (
+        _time_after_stop_to_threshold(
+            post_exit,
+            trade=trade,
+            risk_distance=risk_distance,
+            threshold_r=1.0,
+        )
+        if is_stop
+        else None
+    )
+    time_to_2r = (
+        _time_after_stop_to_threshold(
+            post_exit,
+            trade=trade,
+            risk_distance=risk_distance,
+            threshold_r=2.0,
+        )
+        if is_stop
+        else None
+    )
+
+    atr_at_entry = _atr_before_entry(candles, entry_index, ATR_PERIOD)
+    stop_distance_atr = (
+        risk_distance / atr_at_entry if atr_at_entry > 0 else None
+    )
 
     return {
         "entry_time": trade.entry_time.isoformat(),
@@ -205,14 +302,58 @@ def _trade_diagnostic(
         "cost_r": trade.cost_r,
         "net_r": trade.net_r,
         "exit_reason": trade.exit_reason,
+        "atr14_at_entry": atr_at_entry,
+        "stop_distance_atr": stop_distance_atr,
+        "mfe_r_before_exit": mfe_before_exit,
+        "mae_r_before_exit": mae_before_exit,
         "mfe_r_24h": mfe_r,
         "mae_r_24h": mae_r,
         "post_exit_mfe_r_24h": post_exit_mfe_r,
+        "mfe_r_after_stop_24h": mfe_after_stop,
+        "time_from_stop_to_1r_hours": time_to_1r,
+        "time_from_stop_to_2r_hours": time_to_2r,
         "reached_0_5r_24h": mfe_r >= 0.5,
         "reached_1r_24h": mfe_r >= 1.0,
         "reached_2r_24h": mfe_r >= 2.0,
         "reached_3r_24h": mfe_r >= 3.0,
     }
+
+
+def _time_after_stop_to_threshold(
+    candles: tuple[Candle, ...],
+    *,
+    trade: BacktestTrade,
+    risk_distance: float,
+    threshold_r: float,
+) -> float | None:
+    threshold = trade.entry + threshold_r * risk_distance
+    for candle in candles:
+        if candle.high >= threshold:
+            reached_at = candle.timestamp + timedelta(minutes=30)
+            return (reached_at - trade.exit_time).total_seconds() / 3600
+    return None
+
+
+def _atr_before_entry(
+    candles: tuple[Candle, ...],
+    entry_index: int,
+    period: int,
+) -> float:
+    if entry_index < period + 1:
+        return 0.0
+
+    ranges = []
+    for index in range(entry_index - period, entry_index):
+        candle = candles[index]
+        previous_close = candles[index - 1].close
+        ranges.append(
+            max(
+                candle.high - candle.low,
+                abs(candle.high - previous_close),
+                abs(candle.low - previous_close),
+            )
+        )
+    return sum(ranges) / period
 
 
 def _complete_utc_days(candles: tuple[Candle, ...]) -> int:
