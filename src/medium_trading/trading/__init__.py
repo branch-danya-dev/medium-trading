@@ -1,0 +1,1 @@
+"""Execution-independent trading helpers."""
