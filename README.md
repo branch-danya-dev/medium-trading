@@ -9,7 +9,7 @@ The first version is intentionally small:
 - research markets are tested separately rather than forcing one universal strategy;
 - legacy FX research remains reproducible;
 - current market: Gold / XAU/USD;
-- current candidate: frozen XAU/USD New York momentum continuation;
+- current candidate: frozen XAU/USD New York opening exhaustion / reversal;
 - daily-income consistency is now a primary evaluation target;
 - starting equity model: USD 1,000;
 - default risk: 0.5% per trade, 1.0% maximum combined open risk;
@@ -432,25 +432,30 @@ Run the fixed 2023-2025 daily-income baseline:
 
 That London-range breakout baseline failed the gate and is rejected.
 
-The next gold hypothesis is New York momentum continuation. It requires a 05:00-08:30 New York impulse
-of at least 1.0 ATR14, with at least five of the seven M30 candle bodies aligned with the impulse. After
-08:30, the first counter-direction M30 candle is treated as the pullback; its extreme may not retrace
-more than 50% of the impulse. The first later directional close through both the pullback boundary and
-the impulse ending price triggers entry on the next M30 open. Stop is the pullback extreme, target is
-1.5R, maximum holding remains 3 hours, and there is at most one attempt per day. New decisions stop after
-11:30 New York time.
+The New York momentum-continuation baseline was then tested and rejected. It produced only 54 trades over
+773 eligible sessions, making it unsuitable for the daily-income objective, and its 2x-cost result was
+negative.
 
-Run the frozen 2023-2025 momentum baseline using the same gold history and the same 80-pip cost:
+The next gold hypothesis is New York opening exhaustion / reversal. The reference is the three M30 bars
+starting at 08:30, 09:00 and 09:30 New York time. The move from the 08:30 open to the 10:00 close must
+be at least 0.75 ATR14. After 10:00, only the first counter-direction M30 candle is considered. For an
+upward opening impulse it must be bearish and close inside the band from the 50% midpoint to the 10:00
+close; for a downward impulse it must be bullish and close inside the mirrored band. If that first
+counter-direction candle fails the band condition, the day is skipped. Entry is the next M30 open, stop
+is the opening-reference extreme, target is 1.25R, maximum holding is 4 M30 bars (2 hours), and no new
+decision is allowed after 12:00 New York time.
+
+Run the frozen 2023-2025 exhaustion-reversal baseline with the existing gold dataset:
 
     medium-trading daily-evaluate ^
-      --strategy gold-ny-momentum-continuation ^
+      --strategy gold-ny-exhaustion-reversal ^
       --dataset XAU/USD=data/gold/XAU_USD_M30.csv ^
       --cost XAU/USD=80 ^
-      --json artifacts/gold_ny_momentum_continuation_daily_eval.json
+      --json artifacts/gold_ny_exhaustion_reversal_daily_eval.json
 
-Do not tune the 1.0 ATR impulse threshold, 5-of-7 directional rule, 50% retracement limit, 1.5R target,
-3-hour holding period or 80-pip cost after reading this result. This separate gold hypothesis gets at
-most one materially justified modification if the baseline is close but fails.
+Do not tune the 0.75 ATR threshold, 50% reversal band, 1.25R target, 2-hour holding period or 80-pip
+cost after reading the result. This is a separate gold hypothesis and receives at most one materially
+justified modification only if the baseline is close but fails.
 
 The daily gate is strict and conjunctive: at least 250 eligible sessions, at least 300 trades, >=70%
 active-session rate, >=45% profitable active days, positive average net R/session, net PF >=1.15,
