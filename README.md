@@ -9,7 +9,7 @@ The first version is intentionally small:
 - research markets are tested separately rather than forcing one universal strategy;
 - legacy FX research remains reproducible;
 - current market: Crypto, starting with BTC/USD;
-- current candidate: Bybit BTCUSDT Market State Model v0.1;
+- current candidate: Bybit BTCUSDT Market Structure Model v0.2;
 - daily-income consistency is now a primary evaluation target;
 - starting equity model: USD 1,000;
 - default risk: 0.5% per trade, 1.0% maximum combined open risk;
@@ -732,6 +732,56 @@ Run:
 The first result should be judged as an information test: reversal precision/recall/lift and ROC AUC,
 plus whether the MFE/MAE regressors beat a naive training-mean predictor. Do not tune the threshold from
 the first result.
+
+Market State Model v0.1 failed this information test. Combined 2024-2025 reversal precision was 25.8%
+against a 27.5% base rate, recall was 7.7%, and ROC AUC was 0.512. The 2-hour MFE/MAE regressors also
+failed to beat naive training-mean predictors overall. The v0.1 threshold and boosting parameters are
+therefore not tuned further.
+
+## Market Structure Model v0.2
+
+v0.2 changes the representation rather than the strategy. The same economic-pass LONG trades and the same
+stress snapshots are reused, but a deterministic causal structure layer now identifies confirmed M5 swing
+highs/lows, structural breaks, sweeps, reclaims, acceptance and retests before the classifier sees the state.
+
+Frozen structure rules:
+- confirmed M5 swing = 2 bars left + 2 bars right;
+- primary LONG invalidation level = most recent confirmed swing low;
+- structural close break = close at least 0.10 ATR5 below that swing low;
+- acceptance = at least 3 of the next 5 M5 closes remain below the level;
+- retest tolerance = 0.15 ATR5 around the broken level;
+- fast reclaim window = 3 M5 bars;
+- 8-hour label horizon and +/-0.5R consequence scale remain unchanged.
+
+The labels are deliberately more explicit:
+- NOISE: sweep/break attempt is quickly reclaimed without structural acceptance;
+- CORRECTION: key swing low remains structurally intact and +0.5R recovery occurs before -0.5R continuation;
+- REVERSAL_CANDIDATE: body closes through the swing low but confirmation is incomplete;
+- CONFIRMED_REVERSAL: structural break plus acceptance or held retest, followed by adverse continuation;
+- AMBIGUOUS: unclear outcomes.
+
+The classifier is trained/scored only on clear NOISE, CORRECTION and CONFIRMED_REVERSAL samples.
+REVERSAL_CANDIDATE and AMBIGUOUS are reported but excluded from classifier scoring so uncertain cases are
+not forced into a binary label. 2024 and 2025 remain development folds; 2026 remains untouched.
+
+Run with the already-downloaded state bundle:
+
+    medium-trading btc-market-structure-v0-2-evaluate `
+      --m30 "data/bybit/BTCUSDT_M30.csv" `
+      --m5 "data/bybit/state/BTCUSDT_M5.csv" `
+      --open-interest "data/bybit/state/BTCUSDT_OPEN_INTEREST_30M.csv" `
+      --account-ratio "data/bybit/state/BTCUSDT_ACCOUNT_RATIO_30M.csv" `
+      --funding "data/bybit/state/BTCUSDT_FUNDING.csv" `
+      --symbol BTCUSDT `
+      --fee-bps-per-side 5.5 `
+      --slippage-bps-per-side 2.0 `
+      --starting-equity 10000 `
+      --risk 0.005 `
+      --json artifacts/bybit_btcusdt_market_structure_v0_2.json
+
+The first v0.2 result is still a feasibility test. Judge it by class distribution, clear/excluded sample
+counts, reversal precision/recall/lift, ROC AUC and stability across both development folds. Do not tune
+the 0.50 threshold from the first result.
 
 The legacy daily gate remains strict and conjunctive for the older daily-income studies: at least 250 eligible sessions, at least 300 trades, >=70%
 active-session rate, >=45% profitable active days, positive average net R/session, net PF >=1.15,
