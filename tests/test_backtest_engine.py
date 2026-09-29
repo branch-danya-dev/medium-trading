@@ -324,3 +324,8 @@ def test_index_cfd_cost_unit_uses_whole_price_points() -> None:
 
 def test_gold_cost_unit_uses_one_cent_price_increment() -> None:
     assert pip_size("XAU/USD") == 0.01
+
+
+def test_crypto_cost_unit_uses_whole_usd_price_points() -> None:
+    assert pip_size("BTC/USD") == 1.0
+    assert pip_size("ETH/USD") == 1.0
