@@ -9,7 +9,7 @@ The first version is intentionally small:
 - market: spot FX;
 - symbols: EUR/USD, GBP/USD, USD/JPY, AUD/USD;
 - core data timeframes: 4h, 1h, 30m;
-- current research candidate: frozen direct 4h ML opportunity model;
+- current research candidate: final frozen Direct ML best-opportunity gate;
 - starting equity model: USD 1,000;
 - default risk: 0.5% per trade, 1.0% maximum combined open risk;
 - decisions are made from closed candles, not tick/order-book noise.
@@ -316,8 +316,33 @@ Run the first frozen walk-forward study on the eight 2020-2025 datasets:
       --json artifacts/direct_ml_walk_forward.json
 
 The test folds remain 2023, 2024 and 2025. Training uses only candidate outcomes that were fully known
-before each test year. Do not tune the model, features, threshold, execution template or pair selection
-after reading the first result.
+before each test year.
+
+The broad Direct ML baseline failed. One final, pre-registered modification is allowed: at every 4H
+decision timestamp, rank all eight pairs and both directions with the unchanged models, open only the
+single highest predicted opportunity above 0.0R, and allow at most one open position globally. No model,
+feature, threshold, execution, cost or pair-universe parameter changes are allowed.
+
+Run the final gate:
+
+    medium-trading direct-ml-final-evaluate ^
+      --dataset EUR/USD=data/EUR_USD_M30.csv ^
+      --dataset GBP/USD=data/GBP_USD_M30.csv ^
+      --dataset USD/JPY=data/USD_JPY_M30.csv ^
+      --dataset AUD/USD=data/AUD_USD_M30.csv ^
+      --dataset USD/CAD=data/USD_CAD_M30.csv ^
+      --dataset NZD/USD=data/NZD_USD_M30.csv ^
+      --dataset EUR/GBP=data/EUR_GBP_M30.csv ^
+      --dataset EUR/JPY=data/EUR_JPY_M30.csv ^
+      --cost EUR/USD=1.0 --cost GBP/USD=1.2 ^
+      --cost USD/JPY=1.0 --cost AUD/USD=1.2 ^
+      --cost USD/CAD=1.5 --cost NZD/USD=1.5 ^
+      --cost EUR/GBP=1.5 --cost EUR/JPY=1.5 ^
+      --json artifacts/direct_ml_final_gate.json
+
+The final kill-gate is strict and conjunctive: at least 500 selected trades, combined gross PF > 1.00,
+combined net PF >= 1.10, combined 2x-cost PF > 1.00, and positive net R in at least 2 of the 3 test
+years. If any condition fails, Direct ML is rejected and is not tuned again on these datasets.
 
 ## Status
 
