@@ -58,6 +58,7 @@ def run_backtest(
     strategy: Strategy,
     config: BacktestConfig,
     trade_start: datetime | None = None,
+    trade_end: datetime | None = None,
 ) -> BacktestReport:
     _validate_config(config)
     if len(candles_30m) < 3:
@@ -82,6 +83,8 @@ def run_backtest(
         if trade_start is not None and decision_time < trade_start:
             index += 1
             continue
+        if trade_end is not None and decision_time > trade_end:
+            break
 
         one_hour_count = bisect_right(ends_1h, decision_time)
         four_hour_count = bisect_right(ends_4h, decision_time)
