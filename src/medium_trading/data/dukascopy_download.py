@@ -14,6 +14,7 @@ _BASE_URL = "https://jetta.dukascopy.com/v1/candles/minute"
 _RETRYABLE_HTTP_CODES = {408, 429, 500, 502, 503, 504}
 _RETRY_DELAYS = (0.5, 1.0, 2.0, 4.0)
 _MILLION = Decimal("1000000")
+_CRYPTO_SYMBOLS = {"BTC/USD", "ETH/USD"}
 
 
 class DukascopyDownloadError(RuntimeError):
@@ -162,11 +163,7 @@ def download_m30(
     if workers <= 0:
         raise ValueError("workers must be positive")
 
-    dates = tuple(
-        start + timedelta(days=offset)
-        for offset in range((end - start).days + 1)
-        if (start + timedelta(days=offset)).weekday() != 5
-    )
+    dates = _requested_dates(symbol=symbol, start=start, end=end)
 
     candles: list[Candle] = []
     data_days = 0
@@ -315,3 +312,13 @@ def _ensure_unique(candles: list[Candle]) -> None:
     for previous, current in zip(candles, candles[1:], strict=False):
         if current.timestamp <= previous.timestamp:
             raise ValueError("downloaded M30 timestamps are not unique and increasing")
+
+
+def _requested_dates(*, symbol: str, start: date, end: date) -> tuple[date, ...]:
+    normalized = symbol.strip().upper().replace("_", "/").replace("-", "/")
+    include_saturdays = normalized in _CRYPTO_SYMBOLS
+    return tuple(
+        start + timedelta(days=offset)
+        for offset in range((end - start).days + 1)
+        if include_saturdays or (start + timedelta(days=offset)).weekday() != 5
+    )
