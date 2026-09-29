@@ -9,7 +9,7 @@ The first version is intentionally small:
 - research markets are tested separately rather than forcing one universal strategy;
 - legacy FX research remains reproducible;
 - current market: Crypto, starting with BTC/USD;
-- current candidate: frozen BTC/USD Trend LONG v1.1 stop-width diagnostic;
+- current candidate: BTC/USD Trend LONG v1.1 corrected-execution rerun;
 - daily-income consistency is now a primary evaluation target;
 - starting equity model: USD 1,000;
 - default risk: 0.5% per trade, 1.0% maximum combined open risk;
@@ -536,6 +536,33 @@ Run v1.1:
 The v1.1 JSON adds MFE/MAE up to exit, post-stop MFE, time from a stop to later +1R/+2R, ATR14 at entry,
 stop distance in ATR and cost in R. Compare v1.1 directly with v1 before changing any other parameter or
 adding ML.
+
+The v1.1 stop-width run improved the old baseline but still finished deeply negative under the fixed USD 50
+BTC cost assumption. It also exposed that fixed price-point costs and bar-count holding are unsuitable for
+this dataset. The strategy itself is therefore frozen while execution research is corrected.
+
+The corrected rerun uses a notional bps model. Defaults are 5.5 bps fee per side (a conservative non-VIP
+taker/taker perpetual assumption) plus a separate 2.0 bps slippage assumption per side. These inputs are
+configurable; they are not fitted to the historical result. Funding is intentionally not modeled yet because
+the Dukascopy candle file does not include a venue funding series.
+
+The corrected run also enforces a true 24-hour wall-clock holding limit and rejects gap-contaminated data:
+192 recent M30 candles must be consecutive before a decision, and the signal/entry plus the next 48 M30
+candles must also be consecutive. Gap rejections are reported separately.
+
+Run the corrected v1.1 research pass:
+
+    medium-trading btc-long-v1-1-corrected-evaluate ^
+      --data data/crypto/BTC_USD_M30.csv ^
+      --fee-bps-per-side 5.5 ^
+      --slippage-bps-per-side 2.0 ^
+      --starting-equity 10000 ^
+      --risk 0.005 ^
+      --json artifacts/btc_trend_long_v1_1_corrected.json
+
+On PowerShell, replace carets with backticks. The output separates fee R, slippage R, total cost R,
+holding hours and gap diagnostics. Do not add ML or alter the trading rules until this corrected baseline
+has been inspected.
 
 The legacy daily gate remains strict and conjunctive for the older daily-income studies: at least 250 eligible sessions, at least 300 trades, >=70%
 active-session rate, >=45% profitable active days, positive average net R/session, net PF >=1.15,
