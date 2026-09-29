@@ -6,11 +6,11 @@ import pytest
 
 import medium_trading.data.dukascopy_download as dukascopy
 from medium_trading.data.dukascopy_download import (
+    _requested_dates,
     aggregate_m30,
     build_endpoint_url,
     decode_minute_payload,
     endpoint_symbol,
-    _requested_dates,
 )
 
 
