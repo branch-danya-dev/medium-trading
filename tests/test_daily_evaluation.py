@@ -12,8 +12,9 @@ from medium_trading.daily_evaluation import (
     MIN_PROFITABLE_ACTIVE_DAY_RATE,
     MIN_TRADES,
     _metrics_from_trades,
+    _session_dates,
 )
-from medium_trading.domain import Side
+from medium_trading.domain import Candle, Side
 
 
 def _trade(day: int, *, net_r: float, gross_r: float) -> BacktestTrade:
@@ -69,3 +70,32 @@ def test_daily_income_gate_is_pre_registered_and_nontrivial() -> None:
     assert MIN_NET_PROFIT_FACTOR == pytest.approx(1.15)
     assert MAX_BEST_DAY_PROFIT_SHARE == pytest.approx(0.15)
     assert MAX_LOSING_DAY_STREAK == 8
+
+
+def test_crypto_session_dates_exclude_fragmented_days() -> None:
+    candles = []
+    for day, count in ((2, 40), (3, 39), (4, 48)):
+        start = datetime(2025, 1, day, tzinfo=UTC)
+        for index in range(count):
+            candles.append(
+                Candle(
+                    timestamp=start + timedelta(minutes=30 * index),
+                    open=100.0,
+                    high=101.0,
+                    low=99.0,
+                    close=100.0,
+                )
+            )
+
+    sessions = _session_dates(
+        tuple(candles),
+        year=2025,
+        timezone=ZoneInfo("UTC"),
+        required_session_time=None,
+        minimum_session_bars=40,
+    )
+
+    assert sessions == (
+        date(2025, 1, 2),
+        date(2025, 1, 4),
+    )
