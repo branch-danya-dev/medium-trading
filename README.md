@@ -8,8 +8,8 @@ The first version is intentionally small:
 
 - research markets are tested separately rather than forcing one universal strategy;
 - legacy FX research remains reproducible;
-- current market: USA500.IDX/USD and USATECH.IDX/USD index CFDs;
-- current candidate: frozen 30m US cash Opening Range Breakout;
+- current market: US index CFDs, with USA500 ORB closed and USATECH under one final test;
+- current candidate: frozen USATECH 30m Opening Range Breakout quality filter;
 - daily-income consistency is now a primary evaluation target;
 - starting equity model: USD 1,000;
 - default risk: 0.5% per trade, 1.0% maximum combined open risk;
@@ -384,6 +384,26 @@ Then run the fixed 2023-2025 daily-income gate:
       --cost USA500.IDX/USD=1.0 ^
       --cost USATECH.IDX/USD=3.0 ^
       --json artifacts/index_orb_daily_eval.json
+
+The baseline rejected USA500. USATECH was positive overall and positive in two yearly folds, but missed
+the fixed net-PF, 2x-cost-PF and positive-month-rate thresholds. One final modification is therefore
+allowed for USATECH only.
+
+The final variant keeps the same stop, target, holding period, cost and session window, but requires the
+first M30 breakout close to extend at least 10% of the opening-range width beyond the relevant boundary.
+If that first breakout is weaker, the entire session is skipped; there is no second chance later that
+day.
+
+Run the final USATECH ORB test:
+
+    medium-trading daily-evaluate ^
+      --strategy opening-range-breakout-quality ^
+      --dataset USATECH.IDX/USD=data/index/USATECH.IDX_USD_M30.csv ^
+      --cost USATECH.IDX/USD=3.0 ^
+      --json artifacts/usatech_orb_quality_daily_eval.json
+
+The 10% threshold is frozen. If this variant fails any Daily Income Gate condition, US-index ORB is
+rejected and is not tuned again on these datasets.
 
 The daily gate is strict and conjunctive: at least 250 eligible sessions, at least 300 trades, >=70%
 active-session rate, >=45% profitable active days, positive average net R/session, net PF >=1.15,
