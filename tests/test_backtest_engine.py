@@ -275,7 +275,7 @@ def test_explicit_strategy_target_overrides_configured_r_multiple() -> None:
         config=BacktestConfig(
             target_r=5.0,
             round_trip_cost_pips=1.0,
-            minimum_cost_multiple=8.0,
+            minimum_cost_multiple=1.0,
         ),
     )
 
