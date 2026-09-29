@@ -13,7 +13,7 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 - Legacy FX universe: EUR/USD, GBP/USD, USD/JPY, AUD/USD plus four external FX pairs used in validation.
 - Current market: Crypto, starting with BTC/USD.
 - Core data timeframe for the current candidate: 30m.
-- Current research candidate: frozen BTC/USD Trend LONG v1 diagnostic baseline.
+- Current research candidate: frozen BTC/USD Trend LONG v1.1 stop-width diagnostic.
 - Default project starting equity model: USD 1,000. The BTC Trend LONG v1 diagnostic baseline uses USD 10,000 so R-to-USD interpretation is explicit.
 - Default risk: 0.5% of equity per trade.
 - Maximum combined open risk: 1.0% of equity.
@@ -75,27 +75,39 @@ The uploaded BTC/USD history also exposed material historical-data fragmentation
 
 The frozen BTC/USD rolling intraday momentum-continuation baseline also failed. It produced 333 trades across 867 quality-filtered UTC sessions, negative gross/net performance overall, and only 2024 was positive. It is REJECTED. Do not tune that mixed LONG/SHORT hypothesis further on the inspected 2023-2025 data.
 
-The research focus is now deliberately narrower: BTC/USD Trend LONG v1. The purpose is diagnostic, not to maximize historical profit and not to satisfy the old Daily Income Gate.
+BTC/USD Trend LONG v1 was evaluated as a diagnostic baseline:
+- 1,092 LONG trades;
+- gross +47.13R with gross PF 1.067, so the raw direction/setup stream was weakly positive before costs;
+- modeled costs consumed 284.56R, producing net -237.42R and a roughly 71% drawdown;
+- 695 trades exited by stop/stop-gap;
+- 425 stopped trades subsequently reached at least +1R from the original entry inside the 24-hour diagnostic horizon;
+- many trades had very small structural stop distances, making the fixed USD 50 modeled cost extremely large in R terms.
+
+The evidence does not justify ML yet. The immediate failure mode is execution/stop width: many LONG candidates later move strongly upward after being stopped, while narrow pullback stops inflate transaction-cost drag measured in R.
+
+The current frozen modification is BTC/USD Trend LONG v1.1. It changes only stop width; trend regime, entry trigger, target, holding period, risk, costs and ML/noise-filter status remain unchanged:
 - instrument: BTC/USD only;
-- side: LONG only; no SHORT and no sideways/range basket;
+- side: LONG only;
 - ML: OFF;
 - noise filter: OFF;
 - 4H trend regime: latest completed 4H close above EMA20, and EMA20 above its value three completed 4H bars earlier;
-- M30 setup: one bearish pullback candle followed immediately by a bullish M30 candle that closes above the pullback high;
+- M30 setup: one bearish pullback candle followed immediately by a bullish M30 candle closing above the pullback high;
 - entry: next M30 open;
-- stop: pullback low;
-- target: 2.0R;
-- maximum holding: 48 M30 bars / 24 hours;
+- structural stop anchor: pullback low;
+- minimum stop distance: 1.0 x M30 ATR14 measured from the actual next-open entry;
+- resolved stop for LONG = lower of pullback low or actual entry minus ATR14;
+- target: 2.0R from the resolved stop distance;
+- maximum holding: 48 M30 bars / nominally 24 hours, unchanged from v1 for comparability;
 - maximum one open BTC position at a time via the shared backtest engine;
-- starting equity for this diagnostic: USD 10,000;
-- risk: 0.5% per trade, so 1R initially corresponds to USD 50;
-- BTC/USD round-trip modeled cost remains USD 50 price points;
-- the old 8x expected-move cost gate is intentionally disabled for this diagnostic by setting minimum_cost_multiple=0.01. This is not a relaxation of transaction costs: costs are still deducted from every trade. The purpose is to observe noisy/micro setups instead of hiding them before later ML/noise-filter work;
-- fixed historical trade window: 2023-01-01 through 2025-12-31.
+- starting equity: USD 10,000;
+- risk: 0.5% per trade;
+- modeled BTC/USD round-trip cost: USD 50 price points;
+- old 8x expected-move cost gate remains disabled at minimum_cost_multiple=0.01 so micro/noise candidates remain visible and costs are still deducted from every trade;
+- fixed historical trade window remains 2023-01-01 through 2025-12-31.
 
-BTC Trend LONG v1 diagnostics must include each executed trade plus 24-hour MFE, MAE, post-exit favorable movement and rates of reaching +0.5R/+1R/+2R/+3R. Summaries must report gross and net R/PF, cost drag, drawdown, USD equity result and yearly splits.
+BTC Trend LONG v1.1 diagnostics must include MFE and MAE up to exit, 24-hour MFE/MAE, post-stop favorable movement, time from stop to later +1R/+2R when applicable, ATR14 at entry, stop distance in ATR and cost in R.
 
-Do not use the Daily Income Gate to judge this baseline. A small net loss is not by itself a rejection if the gross LONG stream has evidence of edge and the diagnostics show a concrete, repeatable noise/cost/entry problem. Conversely, if gross expectancy is negative across the inspected folds and strong LONG continuations are not being captured, do not add ML to rescue it: fix or reject the deterministic LONG logic first. Do not tune EMA period, EMA slope lookback, pullback/confirmation definition, target, stop, holding period or costs after viewing the first result.
+Do not use the legacy Daily Income Gate for this v1/v1.1 diagnostic sequence. Compare v1.1 directly with v1 to answer one question: whether widening only the stop removes a material share of false stop-outs and reduces cost drag in R without destroying the weak positive gross edge. Do not change EMA period, EMA slope lookback, entry rule, target, holding period, cost, risk, or add ML before reading v1.1.
 
 Daily Income Gate is frozen before the first result. A strategy passes only if all conditions hold across the combined fixed test years:
 - at least 250 eligible session days;
