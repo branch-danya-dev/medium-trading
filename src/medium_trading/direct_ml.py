@@ -68,6 +68,7 @@ class TradeMetrics:
     gross_r: float
     total_cost_r: float
     net_r: float
+    gross_profit_factor: float
     profit_factor: float
     win_rate: float
 
@@ -100,6 +101,43 @@ class DirectWalkForwardEvaluation:
     combined_model_2x_costs: TradeMetrics
     per_symbol_model: dict[str, TradeMetrics]
     per_symbol_model_2x_costs: dict[str, TradeMetrics]
+
+
+FINAL_MIN_TRADES = 500
+FINAL_MIN_GROSS_PROFIT_FACTOR = 1.00
+FINAL_MIN_NET_PROFIT_FACTOR = 1.10
+FINAL_MIN_2X_PROFIT_FACTOR = 1.00
+FINAL_MIN_POSITIVE_YEARS = 2
+
+
+@dataclass(frozen=True, slots=True)
+class FinalDirectFoldEvaluation:
+    test_year: int
+    train_samples: int
+    test_samples: int
+    broad_selected_samples: int
+    best_selected_samples: int
+    broad_model: TradeMetrics
+    best_model: TradeMetrics
+    best_model_2x_costs: TradeMetrics
+
+
+@dataclass(frozen=True, slots=True)
+class FinalDirectEvaluation:
+    feature_names: tuple[str, ...]
+    model_params: dict[str, object]
+    prediction_threshold_r: float
+    stop_atr_multiple: float
+    target_atr_multiple: float
+    max_holding_m30_bars: int
+    folds: tuple[FinalDirectFoldEvaluation, ...]
+    combined_broad_model: TradeMetrics
+    combined_best_model: TradeMetrics
+    combined_best_model_2x_costs: TradeMetrics
+    per_symbol_best_model: dict[str, TradeMetrics]
+    per_symbol_best_model_2x_costs: dict[str, TradeMetrics]
+    positive_years: int
+    passes_kill_gate: bool
 
 
 def extract_direct_opportunities(
@@ -321,6 +359,183 @@ def evaluate_direct_ml_opportunities(
     )
 
 
+def evaluate_direct_ml_final(
+    samples: Iterable[OpportunitySample],
+    *,
+    first_test_year: int = FIRST_TEST_YEAR,
+    last_test_year: int = LAST_TEST_YEAR,
+) -> FinalDirectEvaluation:
+    regressor = _load_regressor()
+    all_samples = tuple(sorted(samples, key=lambda sample: sample.decision_time))
+    if not all_samples:
+        raise ValueError("final direct ML evaluation requires opportunity samples")
+    if last_test_year < first_test_year:
+        raise ValueError("last_test_year cannot be before first_test_year")
+
+    folds: list[FinalDirectFoldEvaluation] = []
+    combined_broad: list[BacktestTrade] = []
+    combined_best: list[BacktestTrade] = []
+
+    for year in range(first_test_year, last_test_year + 1):
+        test_start = datetime(year, 1, 1, tzinfo=UTC)
+        test_end = datetime(year + 1, 1, 1, tzinfo=UTC)
+        train = tuple(
+            sample for sample in all_samples if sample.label_end_time < test_start
+        )
+        test = tuple(
+            sample
+            for sample in all_samples
+            if test_start <= sample.decision_time < test_end
+        )
+        if not test:
+            continue
+        if len(train) < 500:
+            raise ValueError(
+                f"not enough pre-{year} direct ML samples: {len(train)}; need at least 500"
+            )
+
+        long_model = regressor(**MODEL_PARAMS)
+        short_model = regressor(**MODEL_PARAMS)
+        train_features = [sample.features for sample in train]
+        long_model.fit(
+            train_features,
+            [sample.long_trade.net_r for sample in train],
+        )
+        short_model.fit(
+            train_features,
+            [sample.short_trade.net_r for sample in train],
+        )
+
+        test_features = [sample.features for sample in test]
+        long_predictions = long_model.predict(test_features)
+        short_predictions = short_model.predict(test_features)
+        broad_selected = _select_model_trades(
+            test,
+            long_predictions=long_predictions,
+            short_predictions=short_predictions,
+        )
+        best_selected = _select_best_model_trades(
+            test,
+            long_predictions=long_predictions,
+            short_predictions=short_predictions,
+        )
+
+        folds.append(
+            FinalDirectFoldEvaluation(
+                test_year=year,
+                train_samples=len(train),
+                test_samples=len(test),
+                broad_selected_samples=len(broad_selected),
+                best_selected_samples=len(best_selected),
+                broad_model=_metrics(broad_selected),
+                best_model=_metrics(best_selected),
+                best_model_2x_costs=_metrics(
+                    best_selected,
+                    cost_multiplier=2.0,
+                ),
+            )
+        )
+        combined_broad.extend(broad_selected)
+        combined_best.extend(best_selected)
+
+    if not folds:
+        raise ValueError("no final direct ML folds contained test samples")
+
+    combined_best_metrics = _metrics(combined_best)
+    combined_best_2x_metrics = _metrics(combined_best, cost_multiplier=2.0)
+    positive_years = sum(fold.best_model.net_r > 0 for fold in folds)
+    passes_kill_gate = (
+        combined_best_metrics.trades >= FINAL_MIN_TRADES
+        and combined_best_metrics.gross_profit_factor > FINAL_MIN_GROSS_PROFIT_FACTOR
+        and combined_best_metrics.profit_factor >= FINAL_MIN_NET_PROFIT_FACTOR
+        and combined_best_2x_metrics.profit_factor > FINAL_MIN_2X_PROFIT_FACTOR
+        and positive_years >= FINAL_MIN_POSITIVE_YEARS
+    )
+
+    symbols = sorted({trade.symbol for trade in combined_best})
+    return FinalDirectEvaluation(
+        feature_names=FEATURE_NAMES,
+        model_params=dict(MODEL_PARAMS),
+        prediction_threshold_r=PREDICTION_THRESHOLD_R,
+        stop_atr_multiple=STOP_ATR_MULTIPLE,
+        target_atr_multiple=TARGET_ATR_MULTIPLE,
+        max_holding_m30_bars=MAX_HOLDING_M30_BARS,
+        folds=tuple(folds),
+        combined_broad_model=_metrics(combined_broad),
+        combined_best_model=combined_best_metrics,
+        combined_best_model_2x_costs=combined_best_2x_metrics,
+        per_symbol_best_model={
+            symbol: _metrics(
+                trade for trade in combined_best if trade.symbol == symbol
+            )
+            for symbol in symbols
+        },
+        per_symbol_best_model_2x_costs={
+            symbol: _metrics(
+                (trade for trade in combined_best if trade.symbol == symbol),
+                cost_multiplier=2.0,
+            )
+            for symbol in symbols
+        },
+        positive_years=positive_years,
+        passes_kill_gate=passes_kill_gate,
+    )
+
+
+def final_evaluation_payload(
+    evaluation: FinalDirectEvaluation,
+) -> dict[str, object]:
+    return {
+        "feature_names": list(evaluation.feature_names),
+        "model": {
+            "type": "HistGradientBoostingRegressor",
+            "params": evaluation.model_params,
+            "prediction_threshold_r": evaluation.prediction_threshold_r,
+        },
+        "execution": {
+            "stop_atr_multiple": evaluation.stop_atr_multiple,
+            "target_atr_multiple": evaluation.target_atr_multiple,
+            "max_holding_m30_bars": evaluation.max_holding_m30_bars,
+            "selection": "single_best_global_non_overlapping",
+        },
+        "kill_gate": {
+            "min_trades": FINAL_MIN_TRADES,
+            "min_gross_profit_factor_exclusive": FINAL_MIN_GROSS_PROFIT_FACTOR,
+            "min_net_profit_factor": FINAL_MIN_NET_PROFIT_FACTOR,
+            "min_2x_profit_factor_exclusive": FINAL_MIN_2X_PROFIT_FACTOR,
+            "min_positive_years": FINAL_MIN_POSITIVE_YEARS,
+            "positive_years": evaluation.positive_years,
+            "passes": evaluation.passes_kill_gate,
+        },
+        "folds": [
+            {
+                "test_year": fold.test_year,
+                "train_samples": fold.train_samples,
+                "test_samples": fold.test_samples,
+                "broad_selected_samples": fold.broad_selected_samples,
+                "best_selected_samples": fold.best_selected_samples,
+                "broad_model": asdict(fold.broad_model),
+                "best_model": asdict(fold.best_model),
+                "best_model_2x_costs": asdict(fold.best_model_2x_costs),
+            }
+            for fold in evaluation.folds
+        ],
+        "combined": {
+            "broad_model": asdict(evaluation.combined_broad_model),
+            "best_model": asdict(evaluation.combined_best_model),
+            "best_model_2x_costs": asdict(evaluation.combined_best_model_2x_costs),
+        },
+        "per_symbol_best_model": {
+            symbol: asdict(metrics)
+            for symbol, metrics in evaluation.per_symbol_best_model.items()
+        },
+        "per_symbol_best_model_2x_costs": {
+            symbol: asdict(metrics)
+            for symbol, metrics in evaluation.per_symbol_best_model_2x_costs.items()
+        },
+    }
+
+
 def evaluation_payload(
     evaluation: DirectWalkForwardEvaluation,
 ) -> dict[str, object]:
@@ -399,6 +614,55 @@ def _select_model_trades(
         )
         selected.append(trade)
         blocked_until[sample.symbol] = trade.exit_time
+
+    return tuple(selected)
+
+
+def _select_best_model_trades(
+    samples: tuple[OpportunitySample, ...],
+    *,
+    long_predictions,
+    short_predictions,
+) -> tuple[BacktestTrade, ...]:
+    candidates = tuple(
+        zip(samples, long_predictions, short_predictions, strict=True)
+    )
+    selected: list[BacktestTrade] = []
+    blocked_until = datetime.min.replace(tzinfo=UTC)
+    index = 0
+
+    while index < len(candidates):
+        decision_time = candidates[index][0].decision_time
+        group = []
+        while (
+            index < len(candidates)
+            and candidates[index][0].decision_time == decision_time
+        ):
+            group.append(candidates[index])
+            index += 1
+
+        if decision_time < blocked_until:
+            continue
+
+        best_prediction = PREDICTION_THRESHOLD_R
+        best_trade: BacktestTrade | None = None
+        for sample, long_prediction, short_prediction in group:
+            if long_prediction >= short_prediction:
+                prediction = long_prediction
+                trade = sample.long_trade
+            else:
+                prediction = short_prediction
+                trade = sample.short_trade
+
+            if prediction > best_prediction:
+                best_prediction = prediction
+                best_trade = trade
+
+        if best_trade is None:
+            continue
+
+        selected.append(best_trade)
+        blocked_until = best_trade.exit_time
 
     return tuple(selected)
 
@@ -523,15 +787,24 @@ def _metrics(
         trade.gross_r - cost_multiplier * trade.cost_r
         for trade in items
     )
+    gross_values = tuple(trade.gross_r for trade in items)
+    gross_positive = sum(value for value in gross_values if value > 0)
+    gross_negative = abs(sum(value for value in gross_values if value < 0))
+    gross_profit_factor = (
+        gross_positive / gross_negative
+        if gross_negative
+        else float("inf")
+    )
     positive = sum(value for value in net_values if value > 0)
     negative = abs(sum(value for value in net_values if value < 0))
     profit_factor = positive / negative if negative else float("inf")
 
     return TradeMetrics(
         trades=len(items),
-        gross_r=sum(trade.gross_r for trade in items),
+        gross_r=sum(gross_values),
         total_cost_r=sum(trade.cost_r for trade in items) * cost_multiplier,
         net_r=sum(net_values),
+        gross_profit_factor=gross_profit_factor,
         profit_factor=profit_factor,
         win_rate=(
             sum(value > 0 for value in net_values) / len(items)
