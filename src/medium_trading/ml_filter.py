@@ -1,8 +1,8 @@
 from bisect import bisect_right
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
 from math import sqrt
-from collections.abc import Iterable
 
 from medium_trading.backtest.engine import aggregate_candles, run_backtest
 from medium_trading.backtest.model import BacktestConfig, BacktestTrade
