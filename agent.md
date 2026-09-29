@@ -13,7 +13,7 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 - Legacy FX universe: EUR/USD, GBP/USD, USD/JPY, AUD/USD plus four external FX pairs used in validation.
 - Current market: Crypto, starting with BTC/USD.
 - Core data timeframe for the current candidate: 30m.
-- Current research candidate: Bybit BTCUSDT Trend LONG v1.1 + real-move ML filter v0.2 feasibility test.
+- Current research candidate: Bybit BTCUSDT Market State Model v0.1 for in-trade noise-vs-reversal feasibility.
 - Default project starting equity model: USD 1,000. The BTC Trend LONG v1 diagnostic baseline uses USD 10,000 so R-to-USD interpretation is explicit.
 - Default risk: 0.5% of equity per trade.
 - Maximum combined open risk: 1.0% of equity.
@@ -196,6 +196,35 @@ The next frozen feasibility task is real-move ML filter v0.2. It deliberately si
 - report precision, recall, base REAL_MOVE rate and precision lift for 2024 and 2025 separately and combined, plus DIRECT_MOVE / POST_STOP_MOVE / NO_MOVE distributions.
 
 v0.2 is not a profitability claim and is not allowed to tune features, target horizon, +2R label, economic gate, threshold or model hyperparameters after the result. If v0.2 cannot show meaningful discrimination over the base REAL_MOVE rate, the next discussion must focus on information/features or abandon this ML-filter approach rather than threshold hunting.
+
+The real-move v0.2 result also failed. Combined 2024-2025 development precision was 47.0% against a 49.5% REAL_MOVE base rate (0.95x precision lift), with 39.9% recall. 2024 showed only a small positive lift and 2025 deteriorated materially. Economic-gate only remained much better than economic-gate + ML. Therefore the project does not continue threshold or hyperparameter tuning on the M30 snapshot classifier.
+
+The current task is Market State Model v0.1. This is a different research question: while an economic-pass LONG position is alive, can a richer multi-timeframe state distinguish a temporary adverse fluctuation from a genuine reversal risk?
+
+Market State Model v0.1 is frozen as follows:
+- data years: 2023-2025 development only; 2026 remains untouched;
+- strategy and economic gate remain unchanged;
+- native Bybit M5 candles are added and aggregated causally into completed M15, M30, 1H and 4H state features;
+- Bybit 30-minute open interest, 30-minute long/short account ratio and historical funding are added as public market-state inputs;
+- no order-book, L2/L3, tick/HFT infrastructure or historical taker-flow dependency is added in v0.1;
+- only economic-pass Trend LONG v1.1 trades are used;
+- snapshots are sampled every 15 minutes while the position is still alive under the original hard stop/target/24h rules;
+- snapshots are considered only when management matters: retrace from prior MFE >=0.15R or current PnL <=-0.05R;
+- features must be known at snapshot time. Higher-timeframe aggregates must be fully completed; never use a partially formed M15/M30/1H/4H bucket;
+- feature groups: M5 returns/acceleration/efficiency/candle shape/volume/compression, M15/M30/1H/4H trend context, current trade path (current R, MFE/MAE so far, retrace, time in trade, distance to stop/target), OI changes, long-account ratio changes and latest settled funding;
+- label horizon is 8 hours and local decision scale is +/-0.5R from the snapshot price;
+- TREND_VALID = +0.5R is reached before -0.5R;
+- NOISE_PULLBACK = -0.5R is reached first but +0.5R is later recovered inside 8 hours;
+- REVERSAL = -0.5R is reached and +0.5R is not recovered inside 8 hours;
+- STALL = neither side reaches 0.5R inside 8 hours;
+- the first classifier is REVERSAL versus all other states, threshold fixed at 0.50;
+- two additional regressors predict future MFE and future MAE over the next 2 hours;
+- models are simple HistGradientBoosting models; v0.1 is an information/feasibility test, not a deep-learning or sequence-model attempt;
+- expanding-window development folds are 2024 and 2025, with labels required to be fully known before each fold;
+- primary diagnostics: reversal base rate, precision, recall, precision lift, ROC AUC, Brier score, state-class distribution, and model-vs-naive MAE for 2h MFE/MAE;
+- Market State Model v0.1 is diagnostic only. It does not yet replace the deterministic stop or issue live HOLD/EXIT commands.
+
+Do not tune the v0.1 threshold or model after the first result. First determine whether richer M5/multi-timeframe/positioning state contains measurable information about reversal versus recoverable noise.
 
 Daily Income Gate is frozen before the first result. A strategy passes only if all conditions hold across the combined fixed test years:
 - at least 250 eligible session days;
