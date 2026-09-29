@@ -18,6 +18,11 @@ from medium_trading.crypto_long_baseline import (
     evaluate_btc_long_v1_1,
     evaluate_btc_long_v1_1_corrected,
 )
+from medium_trading.crypto_noise_filter import (
+    evaluate_btc_long_noise_filter_v01,
+    evaluation_payload as crypto_noise_filter_payload,
+    extract_btc_long_noise_samples,
+)
 from medium_trading.daily_evaluation import (
     DailyStrategyEvaluation,
     evaluate_daily_strategy,
@@ -340,6 +345,19 @@ def main() -> None:
     btc_long_v1_1_corrected.add_argument("--risk", type=float, default=0.005)
     btc_long_v1_1_corrected.add_argument("--json", dest="json_output")
 
+    btc_noise_ml = subparsers.add_parser("btc-long-noise-ml-v0-1-evaluate")
+    btc_noise_ml.add_argument(
+        "--data",
+        required=True,
+        help="Bybit BTCUSDT M30 CSV, e.g. data/bybit/BTCUSDT_M30.csv",
+    )
+    btc_noise_ml.add_argument("--symbol", default="BTCUSDT")
+    btc_noise_ml.add_argument("--fee-bps-per-side", type=float, default=5.5)
+    btc_noise_ml.add_argument("--slippage-bps-per-side", type=float, default=2.0)
+    btc_noise_ml.add_argument("--starting-equity", type=float, default=10_000.0)
+    btc_noise_ml.add_argument("--risk", type=float, default=0.005)
+    btc_noise_ml.add_argument("--json", dest="json_output")
+
     args = parser.parse_args()
     if args.command == "download-dukascopy":
         _download_dukascopy(args)
@@ -371,6 +389,8 @@ def main() -> None:
         _btc_long_v1_1_evaluate(args)
     elif args.command == "btc-long-v1-1-corrected-evaluate":
         _btc_long_v1_1_corrected_evaluate(args)
+    elif args.command == "btc-long-noise-ml-v0-1-evaluate":
+        _btc_long_noise_ml_v0_1_evaluate(args)
 
 
 def _download_dukascopy(args: argparse.Namespace) -> None:
@@ -929,6 +949,55 @@ def _btc_long_v1_1_corrected_evaluate(args: argparse.Namespace) -> None:
             encoding="utf-8",
         )
         print(f"wrote corrected BTC LONG v1.1 report to {output}")
+
+
+
+def _btc_long_noise_ml_v0_1_evaluate(args: argparse.Namespace) -> None:
+    candles = load_candles(Path(args.data))
+    samples = extract_btc_long_noise_samples(
+        candles=candles,
+        symbol=args.symbol,
+        fee_bps_per_side=args.fee_bps_per_side,
+        slippage_bps_per_side=args.slippage_bps_per_side,
+        starting_equity=args.starting_equity,
+        risk_fraction=args.risk,
+    )
+    evaluation = evaluate_btc_long_noise_filter_v01(samples)
+    payload = crypto_noise_filter_payload(evaluation)
+    combined = payload["combined"]
+    classification = combined["classification"]
+    raw = combined["raw"]
+    economic = combined["economic_gate"]
+    model = combined["ml_filter"]
+
+    print("BTCUSDT LONG ML noise filter v0.1")
+    print(
+        f"raw trades={raw['trades']} grossR={raw['gross_r']:.2f} "
+        f"netR={raw['net_r']:.2f} PF={raw['profit_factor']:.2f}"
+    )
+    print(
+        f"economic trades={economic['trades']} grossR={economic['gross_r']:.2f} "
+        f"netR={economic['net_r']:.2f} PF={economic['profit_factor']:.2f}"
+    )
+    print(
+        f"ml trades={model['trades']} grossR={model['gross_r']:.2f} "
+        f"netR={model['net_r']:.2f} PF={model['profit_factor']:.2f}"
+    )
+    print(
+        f"clean precision={classification['precision']:.1%} "
+        f"recall={classification['recall']:.1%} "
+        f"selected={classification['predicted_clean']}/"
+        f"{classification['candidates']}"
+    )
+
+    if args.json_output:
+        output = Path(args.json_output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(
+            json.dumps(payload, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        print(f"wrote BTC LONG ML noise-filter v0.1 report to {output}")
 
 
 def _strategy_from_name(name: str) -> Strategy:
