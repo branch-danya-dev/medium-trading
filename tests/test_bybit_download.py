@@ -86,10 +86,12 @@ def test_download_m30_requires_complete_exchange_native_history(
         start_ms: int,
         end_ms: int,
         base_url: str,
+        interval_minutes: int,
     ) -> dict[str, object]:
         assert symbol == "BTCUSDT"
         assert category == "linear"
         assert base_url == "https://api.bybit.com/v5/market/kline"
+        assert interval_minutes == 30
         rows = [
             _row(start_dt + timedelta(minutes=30 * index), 100_000 + index)
             for index in reversed(range(48))
@@ -150,3 +152,46 @@ def test_download_m30_rejects_missing_exchange_candle(
             start=date(2025, 1, 1),
             end=date(2025, 1, 1),
         )
+
+
+
+def test_download_m5_requests_five_minute_interval(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    start_dt = datetime(2025, 1, 1, tzinfo=UTC)
+
+    def fake_fetch(
+        *,
+        symbol: str,
+        category: str,
+        start_ms: int,
+        end_ms: int,
+        base_url: str,
+        interval_minutes: int,
+    ) -> dict[str, object]:
+        assert interval_minutes == 5
+        rows = [
+            _row(start_dt + timedelta(minutes=5 * index), 100_000 + index)
+            for index in reversed(range(288))
+        ]
+        return {
+            "retCode": 0,
+            "retMsg": "OK",
+            "result": {
+                "symbol": symbol,
+                "category": category,
+                "list": rows,
+            },
+        }
+
+    monkeypatch.setattr(bybit, "_fetch_kline_page", fake_fetch)
+
+    result = bybit.download_m5(
+        symbol="BTCUSDT",
+        category="linear",
+        start=date(2025, 1, 1),
+        end=date(2025, 1, 1),
+    )
+
+    assert len(result.candles) == 288
+    assert result.expected_candles == 288
