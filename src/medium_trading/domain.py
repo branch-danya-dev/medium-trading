@@ -45,6 +45,7 @@ class Signal:
     strategy: str
     reasons: tuple[str, ...]
     target: float | None = None
+    minimum_stop_distance: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
