@@ -208,21 +208,36 @@ def _print_report(report: BacktestReport) -> None:
     profit_factor = (
         "inf" if report.profit_factor == float("inf") else f"{report.profit_factor:.3f}"
     )
+    gross_profit_factor = (
+        "inf"
+        if report.gross_profit_factor == float("inf")
+        else f"{report.gross_profit_factor:.3f}"
+    )
     print(f"symbol: {report.symbol}")
     print(f"signals: {report.signal_count}")
     print(f"cost rejections: {report.cost_rejections}")
+    print(f"invalidated before entry: {report.invalidated_before_entry}")
     print(f"trades: {len(report.trades)}")
     print(f"win rate: {report.win_rate:.2%}")
+    print(f"gross R: {report.gross_r:.3f}")
+    print(f"cost drag R: {report.total_cost_r:.3f}")
     print(f"net R: {report.net_r:.3f}")
-    print(f"profit factor: {profit_factor}")
+    print(f"gross profit factor: {gross_profit_factor}")
+    print(f"net profit factor: {profit_factor}")
+    print(f"average holding: {report.average_holding_hours:.2f}h")
+    print(
+        "exits: "
+        f"stop={report.stop_exits} target={report.target_exits} "
+        f"timeout={report.timeout_exits}"
+    )
     print(f"max drawdown: {report.max_drawdown:.2%}")
     print(f"equity: USD {report.starting_equity:.2f} -> USD {report.final_equity:.2f}")
 
 
 def _print_evaluations(evaluations: list[SymbolEvaluation]) -> None:
     header = (
-        f"{'symbol':<10} {'segment':<14} {'trades':>7} {'netR':>9} "
-        f"{'PF':>8} {'win':>8} {'maxDD':>8}"
+        f"{'symbol':<10} {'segment':<14} {'trades':>7} {'grossR':>9} "
+        f"{'costR':>8} {'netR':>9} {'gPF':>7} {'nPF':>7} {'maxDD':>8}"
     )
     print(header)
     print("-" * len(header))
@@ -235,10 +250,20 @@ def _print_evaluations(evaluations: list[SymbolEvaluation]) -> None:
             ("oos_2x_costs", evaluation.out_of_sample_2x_costs),
         )
         for name, report in rows:
-            pf = "inf" if report.profit_factor == float("inf") else f"{report.profit_factor:.2f}"
+            net_pf = (
+                "inf"
+                if report.profit_factor == float("inf")
+                else f"{report.profit_factor:.2f}"
+            )
+            gross_pf = (
+                "inf"
+                if report.gross_profit_factor == float("inf")
+                else f"{report.gross_profit_factor:.2f}"
+            )
             print(
                 f"{evaluation.symbol:<10} {name:<14} {len(report.trades):>7} "
-                f"{report.net_r:>9.2f} {pf:>8} {report.win_rate:>7.1%} "
+                f"{report.gross_r:>9.2f} {report.total_cost_r:>8.2f} "
+                f"{report.net_r:>9.2f} {gross_pf:>7} {net_pf:>7} "
                 f"{report.max_drawdown:>7.1%}"
             )
 
@@ -257,10 +282,18 @@ def _report_payload(report: BacktestReport) -> dict[str, object]:
     return {
         "signals": report.signal_count,
         "cost_rejections": report.cost_rejections,
+        "invalidated_before_entry": report.invalidated_before_entry,
         "trades": len(report.trades),
         "win_rate": report.win_rate,
+        "gross_r": report.gross_r,
+        "total_cost_r": report.total_cost_r,
         "net_r": report.net_r,
+        "gross_profit_factor": report.gross_profit_factor,
         "profit_factor": report.profit_factor,
+        "average_holding_hours": report.average_holding_hours,
+        "stop_exits": report.stop_exits,
+        "target_exits": report.target_exits,
+        "timeout_exits": report.timeout_exits,
         "max_drawdown": report.max_drawdown,
         "starting_equity": report.starting_equity,
         "final_equity": report.final_equity,
