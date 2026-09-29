@@ -1,7 +1,10 @@
 from datetime import UTC, datetime
 
 from medium_trading.domain import Candle, Side, StrategyContext
-from medium_trading.strategy import OpeningRangeBreakoutStrategy
+from medium_trading.strategy import (
+    OpeningRangeBreakoutQualityStrategy,
+    OpeningRangeBreakoutStrategy,
+)
 
 
 def _candle(
@@ -77,3 +80,35 @@ def test_no_signal_when_close_stays_inside_opening_range() -> None:
     )
 
     assert OpeningRangeBreakoutStrategy().evaluate(_context(candles)) is None
+
+
+def test_quality_variant_requires_ten_percent_extension() -> None:
+    candles = (
+        _candle(13, 30, open_=6200, high=6210, low=6190, close=6205),
+        _candle(14, 0, open_=6205, high=6213, low=6200, close=6211),
+    )
+
+    assert OpeningRangeBreakoutQualityStrategy().evaluate(_context(candles)) is None
+
+
+def test_quality_variant_accepts_first_breakout_at_ten_percent_extension() -> None:
+    candles = (
+        _candle(13, 30, open_=6200, high=6210, low=6190, close=6205),
+        _candle(14, 0, open_=6205, high=6214, low=6200, close=6212),
+    )
+
+    signal = OpeningRangeBreakoutQualityStrategy().evaluate(_context(candles))
+
+    assert signal is not None
+    assert signal.side is Side.LONG
+    assert signal.stop == 6190
+
+
+def test_quality_variant_does_not_allow_second_chance_after_weak_breakout() -> None:
+    candles = (
+        _candle(13, 30, open_=6200, high=6210, low=6190, close=6205),
+        _candle(14, 0, open_=6205, high=6212, low=6200, close=6211),
+        _candle(14, 30, open_=6211, high=6218, low=6208, close=6216),
+    )
+
+    assert OpeningRangeBreakoutQualityStrategy().evaluate(_context(candles)) is None
