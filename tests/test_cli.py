@@ -474,3 +474,52 @@ def test_btc_long_v1_1_corrected_parser_uses_execution_defaults(monkeypatch) -> 
     assert args.slippage_bps_per_side == 2.0
     assert args.starting_equity == 10_000.0
     assert args.risk == 0.005
+
+
+
+def test_download_bybit_parser_uses_btcusdt_linear_defaults(monkeypatch) -> None:
+    captured = []
+
+    monkeypatch.setattr(cli, "_download_bybit", captured.append)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "medium-trading",
+            "download-bybit",
+            "--from",
+            "2023-01-01",
+            "--to",
+            "2025-12-31",
+        ],
+    )
+
+    cli.main()
+
+    args = captured[0]
+    assert args.symbol == "BTCUSDT"
+    assert args.category == "linear"
+    assert args.base_url == "https://api.bybit.com/v5/market/kline"
+    assert args.output_dir == "data/bybit"
+
+
+def test_corrected_btc_parser_accepts_exchange_symbol(monkeypatch) -> None:
+    captured = []
+
+    monkeypatch.setattr(cli, "_btc_long_v1_1_corrected_evaluate", captured.append)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "medium-trading",
+            "btc-long-v1-1-corrected-evaluate",
+            "--data",
+            "data/bybit/BTCUSDT_M30.csv",
+            "--symbol",
+            "BTCUSDT",
+        ],
+    )
+
+    cli.main()
+
+    assert captured[0].symbol == "BTCUSDT"
