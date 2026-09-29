@@ -138,3 +138,25 @@ def test_direct_ml_parser_uses_frozen_research_command(monkeypatch) -> None:
     args = captured[0]
     assert args.default_cost_pips == 1.2
     assert args.risk == 0.005
+
+
+def test_direct_ml_final_parser_uses_frozen_research_command(monkeypatch) -> None:
+    captured = []
+
+    monkeypatch.setattr(cli, "_direct_ml_final_evaluate", captured.append)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "medium-trading",
+            "direct-ml-final-evaluate",
+            "--dataset",
+            "EUR/USD=data/EUR_USD_M30.csv",
+        ],
+    )
+
+    cli.main()
+
+    args = captured[0]
+    assert args.default_cost_pips == 1.2
+    assert args.risk == 0.005
