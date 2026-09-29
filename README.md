@@ -9,7 +9,7 @@ The first version is intentionally small:
 - market: spot FX;
 - symbols: EUR/USD, GBP/USD, USD/JPY, AUD/USD;
 - core data timeframes: 4h, 1h, 30m;
-- current research candidate: frozen ML filter over 4h mean-reversion entries;
+- current research candidate: frozen direct 4h ML opportunity model;
 - starting equity model: USD 1,000;
 - default risk: 0.5% per trade, 1.0% maximum combined open risk;
 - decisions are made from closed candles, not tick/order-book noise.
@@ -277,6 +277,47 @@ forward files:
 This diagnostic trains only on labels known before the 2026 window and reports the same selected trade
 set at ordinary and 2x modeled costs. It is not a pristine final holdout because the underlying 2026
 Mean Reversion results have already been inspected.
+
+## Direct ML opportunity research
+
+The next frozen baseline removes Mean Reversion as a mandatory setup generator. Every completed 4H
+state becomes a candidate. Two separate models estimate the net-R outcome of a fixed LONG candidate and
+a fixed SHORT candidate; the higher prediction is used only when it is above 0.0R, otherwise the model
+returns NO TRADE.
+
+The execution template is fixed before the first run:
+
+- entry at the next M30 open;
+- stop at 1.5 x ATR14;
+- target at 2.0 x ATR14;
+- maximum holding time 48 M30 bars (24 hours);
+- existing 8x transaction-cost gate;
+- conservative same-bar stop priority.
+
+The direct model uses no symbol identity. Fixed features are 1/3/6/12/30-bar returns in ATR, 20/50-bar
+z-scores, 10/30-bar efficiency ratios, ATR/price, ATR14/ATR50, 10/30-bar ranges in ATR, current 4H body
+and range in ATR, and position inside the 20-bar range.
+
+Run the first frozen walk-forward study on the eight 2020-2025 datasets:
+
+    medium-trading direct-ml-evaluate ^
+      --dataset EUR/USD=data/EUR_USD_M30.csv ^
+      --dataset GBP/USD=data/GBP_USD_M30.csv ^
+      --dataset USD/JPY=data/USD_JPY_M30.csv ^
+      --dataset AUD/USD=data/AUD_USD_M30.csv ^
+      --dataset USD/CAD=data/USD_CAD_M30.csv ^
+      --dataset NZD/USD=data/NZD_USD_M30.csv ^
+      --dataset EUR/GBP=data/EUR_GBP_M30.csv ^
+      --dataset EUR/JPY=data/EUR_JPY_M30.csv ^
+      --cost EUR/USD=1.0 --cost GBP/USD=1.2 ^
+      --cost USD/JPY=1.0 --cost AUD/USD=1.2 ^
+      --cost USD/CAD=1.5 --cost NZD/USD=1.5 ^
+      --cost EUR/GBP=1.5 --cost EUR/JPY=1.5 ^
+      --json artifacts/direct_ml_walk_forward.json
+
+The test folds remain 2023, 2024 and 2025. Training uses only candidate outcomes that were fully known
+before each test year. Do not tune the model, features, threshold, execution template or pair selection
+after reading the first result.
 
 ## Status
 
