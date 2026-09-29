@@ -14,6 +14,9 @@ def pip_size(symbol: str) -> float:
     if ".IDX/" in normalized:
         # Multi-market research models index costs in whole index price points.
         return 1.0
+    if normalized == "XAU/USD":
+        # Gold research costs are modeled in 0.01 USD price increments.
+        return 0.01
     quote_currency = normalized.split("/")[-1]
     return 0.01 if quote_currency == "JPY" else 0.0001
 
