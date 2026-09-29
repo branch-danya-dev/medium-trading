@@ -9,7 +9,7 @@ The first version is intentionally small:
 - research markets are tested separately rather than forcing one universal strategy;
 - legacy FX research remains reproducible;
 - current market: Crypto, starting with BTC/USD;
-- current candidate: Bybit BTCUSDT linear-perpetual Trend LONG v1.1 rerun;
+- current candidate: Bybit BTCUSDT Trend LONG v1.1 + ML noise-filter v0.1;
 - daily-income consistency is now a primary evaluation target;
 - starting equity model: USD 1,000;
 - default risk: 0.5% per trade, 1.0% maximum combined open risk;
@@ -603,6 +603,40 @@ Then rerun the unchanged corrected LONG v1.1:
 
 This is a data-source validation pass, not a strategy modification. EMA regime, entry, ATR stop floor, 2R
 target, risk and ML/noise-filter status remain frozen.
+
+The Bybit-native rerun produced 1,130 trades and only a near-flat gross edge before costs (+9.20R,
+gross PF 1.013). That is enough for the next diagnostic question: can a small causal ML layer remove
+entries that do not begin clean continuation, without asking ML to invent direction or economics?
+
+ML noise-filter v0.1 keeps the LONG strategy frozen. It first restores the deterministic 8x
+target-distance/execution-cost gate (equivalent to expected cost <=0.25R for the fixed 2R target), then
+classifies only the remaining candidates. Costs are not model features.
+
+The v0.1 label is:
+- CLEAN: +1R before stop and within 8 hours;
+- WHIPSAW: stop first, then +1R within the 24-hour label horizon;
+- NOISE: all remaining cases.
+
+The binary model learns CLEAN vs not-CLEAN, while WHIPSAW and NOISE remain visible in diagnostics.
+HistGradientBoostingClassifier uses a fixed 0.50 probability threshold and fixed parameters; there is no
+threshold/grid search in v0.1. 2023 is training-only, 2024 and 2025 are expanding-window walk-forward test
+folds, and 2026 remains untouched.
+
+Run:
+
+    medium-trading btc-long-noise-ml-v0-1-evaluate `
+      --data "data/bybit/BTCUSDT_M30.csv" `
+      --symbol BTCUSDT `
+      --fee-bps-per-side 5.5 `
+      --slippage-bps-per-side 2.0 `
+      --starting-equity 10000 `
+      --risk 0.005 `
+      --json artifacts/bybit_btcusdt_noise_ml_v0_1.json
+
+The report compares raw baseline, economic-gate only and economic-gate + ML on the same fixed candidate
+stream, with ordinary/2x-cost PnL metrics plus CLEAN precision/recall and class counts. v0.1 only answers
+whether the noise-filter concept has useful out-of-sample discrimination; do not tune it from the first
+result.
 
 The legacy daily gate remains strict and conjunctive for the older daily-income studies: at least 250 eligible sessions, at least 300 trades, >=70%
 active-session rate, >=45% profitable active days, positive average net R/session, net PF >=1.15,
