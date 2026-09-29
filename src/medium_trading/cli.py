@@ -36,6 +36,7 @@ from medium_trading.ml_filter import (
 from medium_trading.ml_filter import evaluation_payload as ml_evaluation_payload
 from medium_trading.ml_filter import forward_evaluation_payload as ml_forward_payload
 from medium_trading.strategy import (
+    CryptoDailyVolatilityExpansionStrategy,
     GoldLondonNewYorkBreakoutStrategy,
     GoldNewYorkExhaustionReversalStrategy,
     GoldNewYorkMomentumContinuationStrategy,
@@ -58,6 +59,7 @@ _STRATEGY_CHOICES = (
     "gold-london-ny-breakout",
     "gold-ny-momentum-continuation",
     "gold-ny-exhaustion-reversal",
+    "crypto-daily-volatility-expansion",
 )
 
 
@@ -242,7 +244,10 @@ def main() -> None:
         "--cost",
         action="append",
         default=[],
-        help="Repeatable SYMBOL=COST; FX uses pips, index CFDs use index price points",
+        help=(
+            "Repeatable SYMBOL=COST; FX uses pips, index CFDs use index "
+            "price points, BTC/USD and ETH/USD use whole USD price points"
+        ),
     )
     daily_evaluate.add_argument(
         "--strategy",
@@ -252,6 +257,7 @@ def main() -> None:
             "gold-london-ny-breakout",
             "gold-ny-momentum-continuation",
             "gold-ny-exhaustion-reversal",
+            "crypto-daily-volatility-expansion",
         ),
         default="opening-range-breakout",
     )
@@ -656,6 +662,7 @@ def _daily_evaluate(args: argparse.Namespace) -> None:
         for symbol, value in _parse_assignments(args.cost, "cost").items()
     }
     target_r, max_holding_bars = _strategy_backtest_defaults(args.strategy)
+    timezone, required_session_time = _daily_evaluation_clock(args.strategy)
 
     evaluations: list[DailyStrategyEvaluation] = []
     for symbol, filename in datasets.items():
@@ -669,6 +676,8 @@ def _daily_evaluate(args: argparse.Namespace) -> None:
                 max_holding_bars=max_holding_bars,
                 round_trip_cost_pips=costs.get(symbol, args.default_cost),
             ),
+            timezone=timezone,
+            required_session_time=required_session_time,
         )
         evaluations.append(evaluation)
 
@@ -706,6 +715,8 @@ def _strategy_from_name(name: str) -> Strategy:
         return GoldNewYorkMomentumContinuationStrategy()
     if name == "gold-ny-exhaustion-reversal":
         return GoldNewYorkExhaustionReversalStrategy()
+    if name == "crypto-daily-volatility-expansion":
+        return CryptoDailyVolatilityExpansionStrategy()
     raise ValueError(f"unsupported strategy: {name}")
 
 
@@ -723,7 +734,15 @@ def _strategy_backtest_defaults(name: str) -> tuple[float, int]:
         return 1.5, 6
     if name == "gold-ny-exhaustion-reversal":
         return 1.25, 4
+    if name == "crypto-daily-volatility-expansion":
+        return 1.5, 8
     return 2.0, 48
+
+
+def _daily_evaluation_clock(name: str) -> tuple[str, tuple[int, int]]:
+    if name == "crypto-daily-volatility-expansion":
+        return "UTC", (0, 0)
+    return "America/New_York", (9, 30)
 
 
 def _print_daily_evaluations(
