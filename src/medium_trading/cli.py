@@ -16,6 +16,7 @@ from medium_trading.config import Settings
 from medium_trading.crypto_long_baseline import (
     evaluate_btc_long_baseline,
     evaluate_btc_long_v1_1,
+    evaluate_btc_long_v1_1_corrected,
 )
 from medium_trading.daily_evaluation import (
     DailyStrategyEvaluation,
@@ -296,6 +297,32 @@ def main() -> None:
     btc_long_v1_1.add_argument("--risk", type=float, default=0.005)
     btc_long_v1_1.add_argument("--json", dest="json_output")
 
+    btc_long_v1_1_corrected = subparsers.add_parser(
+        "btc-long-v1-1-corrected-evaluate"
+    )
+    btc_long_v1_1_corrected.add_argument(
+        "--data",
+        required=True,
+        help="BTC/USD M30 CSV, e.g. data/crypto/BTC_USD_M30.csv",
+    )
+    btc_long_v1_1_corrected.add_argument(
+        "--fee-bps-per-side",
+        type=float,
+        default=5.5,
+    )
+    btc_long_v1_1_corrected.add_argument(
+        "--slippage-bps-per-side",
+        type=float,
+        default=2.0,
+    )
+    btc_long_v1_1_corrected.add_argument(
+        "--starting-equity",
+        type=float,
+        default=10_000.0,
+    )
+    btc_long_v1_1_corrected.add_argument("--risk", type=float, default=0.005)
+    btc_long_v1_1_corrected.add_argument("--json", dest="json_output")
+
     args = parser.parse_args()
     if args.command == "download-dukascopy":
         _download_dukascopy(args)
@@ -323,6 +350,8 @@ def main() -> None:
         _btc_long_evaluate(args)
     elif args.command == "btc-long-v1-1-evaluate":
         _btc_long_v1_1_evaluate(args)
+    elif args.command == "btc-long-v1-1-corrected-evaluate":
+        _btc_long_v1_1_corrected_evaluate(args)
 
 
 def _download_dukascopy(args: argparse.Namespace) -> None:
@@ -810,6 +839,46 @@ def _btc_long_v1_1_evaluate(args: argparse.Namespace) -> None:
             encoding="utf-8",
         )
         print(f"wrote BTC LONG v1.1 report to {output}")
+
+
+def _btc_long_v1_1_corrected_evaluate(args: argparse.Namespace) -> None:
+    candles = load_candles(Path(args.data))
+    evaluation = evaluate_btc_long_v1_1_corrected(
+        candles=candles,
+        fee_bps_per_side=args.fee_bps_per_side,
+        slippage_bps_per_side=args.slippage_bps_per_side,
+        starting_equity=args.starting_equity,
+        risk_fraction=args.risk,
+    )
+    summary = evaluation["summary"]
+    print("BTC/USD Trend LONG v1.1 corrected execution")
+    print(
+        f"trades={summary['trades']} "
+        f"grossR={summary['gross_r']:.2f} "
+        f"netR={summary['net_r']:.2f} "
+        f"gPF={summary['gross_profit_factor']:.2f} "
+        f"nPF={summary['profit_factor']:.2f}"
+    )
+    print(
+        f"fee={summary['total_fee_r']:.2f}R "
+        f"slippage={summary['total_slippage_r']:.2f}R "
+        f"cost={summary['total_cost_r']:.2f}R "
+        f"avg_hold={summary['average_holding_hours']:.2f}h"
+    )
+    print(
+        f"gap_context={summary['gap_context_rejections']} "
+        f"gap_signals={summary['gap_signal_rejections']} "
+        f"maxDD={summary['max_drawdown']:.1%}"
+    )
+    if args.json_output:
+        output = Path(args.json_output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(
+            json.dumps(evaluation, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        print(f"wrote corrected BTC LONG v1.1 report to {output}")
+
 
 def _strategy_from_name(name: str) -> Strategy:
     if name == "trend-pullback":
