@@ -11,9 +11,7 @@ from typing import Callable, Mapping, Sequence
 from medium_trading.domain import Candle
 
 _BASE_URL = "https://api.bybit.com/v5/market/kline"
-_INTERVAL = "30"
-_INTERVAL_DELTA = timedelta(minutes=30)
-_INTERVAL_MS = 30 * 60 * 1000
+_DEFAULT_INTERVAL_MINUTES = 30
 _PAGE_LIMIT = 1000
 _RETRYABLE_HTTP_CODES = {408, 429, 500, 502, 503, 504}
 _RETRYABLE_RET_CODES = {10006}
@@ -43,6 +41,7 @@ def build_kline_url(
     end_ms: int,
     limit: int = _PAGE_LIMIT,
     base_url: str = _BASE_URL,
+    interval_minutes: int = _DEFAULT_INTERVAL_MINUTES,
 ) -> str:
     normalized_symbol = symbol.strip().upper()
     normalized_category = category.strip().lower()
@@ -54,12 +53,14 @@ def build_kline_url(
         raise ValueError("invalid Bybit kline timestamp range")
     if not 1 <= limit <= _PAGE_LIMIT:
         raise ValueError("Bybit kline limit must be between 1 and 1000")
+    if interval_minutes not in {1, 3, 5, 15, 30, 60, 120, 240, 360, 720}:
+        raise ValueError("unsupported Bybit minute kline interval")
 
     query = urllib.parse.urlencode(
         {
             "category": normalized_category,
             "symbol": normalized_symbol,
-            "interval": _INTERVAL,
+            "interval": str(interval_minutes),
             "start": start_ms,
             "end": end_ms,
             "limit": limit,
@@ -122,18 +123,23 @@ def decode_kline_payload(
     return tuple(candles)
 
 
-def download_m30(
+def download_klines(
     *,
     symbol: str,
     category: str,
     start: date,
     end: date,
+    interval_minutes: int,
     progress: Callable[[int, int], None] | None = None,
     base_url: str = _BASE_URL,
 ) -> BybitDownloadResult:
     if end < start:
         raise ValueError("end date cannot be before start date")
+    if interval_minutes not in {1, 3, 5, 15, 30, 60, 120, 240, 360, 720}:
+        raise ValueError("unsupported Bybit minute kline interval")
 
+    interval_delta = timedelta(minutes=interval_minutes)
+    interval_ms = interval_minutes * 60 * 1000
     start_dt = datetime.combine(start, datetime.min.time(), tzinfo=UTC)
     end_exclusive = datetime.combine(
         end + timedelta(days=1),
@@ -143,7 +149,7 @@ def download_m30(
     start_ms = int(start_dt.timestamp() * 1000)
     end_exclusive_ms = int(end_exclusive.timestamp() * 1000)
 
-    expected_candles = int((end_exclusive - start_dt) / _INTERVAL_DELTA)
+    expected_candles = int((end_exclusive - start_dt) / interval_delta)
     total_requests = (expected_candles + _PAGE_LIMIT - 1) // _PAGE_LIMIT
     request_count = 0
     candles: list[Candle] = []
@@ -151,7 +157,7 @@ def download_m30(
 
     while cursor_ms < end_exclusive_ms:
         chunk_end_exclusive = min(
-            cursor_ms + _PAGE_LIMIT * _INTERVAL_MS,
+            cursor_ms + _PAGE_LIMIT * interval_ms,
             end_exclusive_ms,
         )
         payload = _fetch_kline_page(
@@ -160,6 +166,7 @@ def download_m30(
             start_ms=cursor_ms,
             end_ms=chunk_end_exclusive - 1,
             base_url=base_url,
+            interval_minutes=interval_minutes,
         )
         page = decode_kline_payload(
             payload,
@@ -184,6 +191,8 @@ def download_m30(
         start=start_dt,
         end_exclusive=end_exclusive,
         expected_candles=expected_candles,
+        interval_delta=interval_delta,
+        label=f"M{interval_minutes}",
     )
 
     return BybitDownloadResult(
@@ -197,6 +206,46 @@ def download_m30(
     )
 
 
+def download_m30(
+    *,
+    symbol: str,
+    category: str,
+    start: date,
+    end: date,
+    progress: Callable[[int, int], None] | None = None,
+    base_url: str = _BASE_URL,
+) -> BybitDownloadResult:
+    return download_klines(
+        symbol=symbol,
+        category=category,
+        start=start,
+        end=end,
+        interval_minutes=30,
+        progress=progress,
+        base_url=base_url,
+    )
+
+
+def download_m5(
+    *,
+    symbol: str,
+    category: str,
+    start: date,
+    end: date,
+    progress: Callable[[int, int], None] | None = None,
+    base_url: str = _BASE_URL,
+) -> BybitDownloadResult:
+    return download_klines(
+        symbol=symbol,
+        category=category,
+        start=start,
+        end=end,
+        interval_minutes=5,
+        progress=progress,
+        base_url=base_url,
+    )
+
+
 def _fetch_kline_page(
     *,
     symbol: str,
@@ -204,6 +253,7 @@ def _fetch_kline_page(
     start_ms: int,
     end_ms: int,
     base_url: str = _BASE_URL,
+    interval_minutes: int = _DEFAULT_INTERVAL_MINUTES,
 ) -> Mapping[str, object]:
     url = build_kline_url(
         symbol=symbol,
@@ -211,6 +261,7 @@ def _fetch_kline_page(
         start_ms=start_ms,
         end_ms=end_ms,
         base_url=base_url,
+        interval_minutes=interval_minutes,
     )
     attempts = len(_RETRY_DELAYS) + 1
 
@@ -269,11 +320,13 @@ def _validate_complete_range(
     start: datetime,
     end_exclusive: datetime,
     expected_candles: int,
+    interval_delta: timedelta = timedelta(minutes=30),
+    label: str = "M30",
 ) -> None:
     if len(candles) != expected_candles:
         raise BybitDownloadError(
             "Bybit history is incomplete: "
-            f"expected {expected_candles} M30 candles, received {len(candles)}"
+            f"expected {expected_candles} {label} candles, received {len(candles)}"
         )
     if not candles:
         raise BybitDownloadError("Bybit returned no M30 candles")
@@ -282,7 +335,7 @@ def _validate_complete_range(
             f"Bybit history starts at {candles[0].timestamp.isoformat()}, "
             f"expected {start.isoformat()}"
         )
-    expected_last = end_exclusive - _INTERVAL_DELTA
+    expected_last = end_exclusive - interval_delta
     if candles[-1].timestamp != expected_last:
         raise BybitDownloadError(
             f"Bybit history ends at {candles[-1].timestamp.isoformat()}, "
@@ -290,9 +343,9 @@ def _validate_complete_range(
         )
 
     for previous, current in pairwise(candles):
-        if current.timestamp - previous.timestamp != _INTERVAL_DELTA:
+        if current.timestamp - previous.timestamp != interval_delta:
             raise BybitDownloadError(
-                "Bybit M30 history contains a gap between "
+                f"Bybit {label} history contains a gap between "
                 f"{previous.timestamp.isoformat()} and {current.timestamp.isoformat()}"
             )
 
