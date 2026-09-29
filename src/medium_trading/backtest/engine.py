@@ -73,6 +73,7 @@ def run_backtest(
     max_drawdown = 0.0
     signal_count = 0
     cost_rejections = 0
+    invalidated_before_entry = 0
     trades: list[BacktestTrade] = []
 
     index = 0
@@ -99,11 +100,13 @@ def run_backtest(
         signal_count += 1
         entry_index = index + 1
         entry = candles_30m[entry_index].open
-        risk_distance = abs(entry - signal.stop)
-        if risk_distance <= 0:
+
+        if not _entry_has_valid_stop(signal, entry):
+            invalidated_before_entry += 1
             index += 1
             continue
 
+        risk_distance = abs(entry - signal.stop)
         risk_pips = risk_distance / pip_size(symbol)
         effective_cost_pips = (
             config.round_trip_cost_pips * config.cost_stress_multiplier
@@ -133,28 +136,59 @@ def run_backtest(
 
         index = exit_index + 1
 
-    positive_r = sum(trade.net_r for trade in trades if trade.net_r > 0)
-    negative_r = abs(sum(trade.net_r for trade in trades if trade.net_r < 0))
-    profit_factor = positive_r / negative_r if negative_r else float("inf")
+    positive_net_r = sum(trade.net_r for trade in trades if trade.net_r > 0)
+    negative_net_r = abs(sum(trade.net_r for trade in trades if trade.net_r < 0))
+    positive_gross_r = sum(trade.gross_r for trade in trades if trade.gross_r > 0)
+    negative_gross_r = abs(sum(trade.gross_r for trade in trades if trade.gross_r < 0))
+
+    profit_factor = (
+        positive_net_r / negative_net_r if negative_net_r else float("inf")
+    )
+    gross_profit_factor = (
+        positive_gross_r / negative_gross_r if negative_gross_r else float("inf")
+    )
     wins = sum(trade.net_r > 0 for trade in trades)
+    total_holding_hours = sum(
+        (trade.exit_time - trade.entry_time).total_seconds() / 3600
+        for trade in trades
+    )
+    stop_exits = sum(
+        trade.exit_reason in {"stop", "stop_gap"} for trade in trades
+    )
+    target_exits = sum(trade.exit_reason == "target" for trade in trades)
+    timeout_exits = sum(trade.exit_reason == "timeout" for trade in trades)
 
     return BacktestReport(
         symbol=symbol,
         signal_count=signal_count,
         cost_rejections=cost_rejections,
+        invalidated_before_entry=invalidated_before_entry,
         trades=tuple(trades),
         starting_equity=config.starting_equity,
         final_equity=equity,
         net_r=sum(trade.net_r for trade in trades),
+        gross_r=sum(trade.gross_r for trade in trades),
+        total_cost_r=sum(trade.cost_r for trade in trades),
         profit_factor=profit_factor,
+        gross_profit_factor=gross_profit_factor,
         win_rate=(wins / len(trades)) if trades else 0.0,
         max_drawdown=max_drawdown,
+        average_holding_hours=(total_holding_hours / len(trades)) if trades else 0.0,
+        stop_exits=stop_exits,
+        target_exits=target_exits,
+        timeout_exits=timeout_exits,
     )
 
 
 def _tail(candles: tuple[Candle, ...], end: int) -> tuple[Candle, ...]:
     start = max(0, end - _CONTEXT_WINDOW)
     return candles[start:end]
+
+
+def _entry_has_valid_stop(signal: Signal, entry: float) -> bool:
+    if signal.side is Side.LONG:
+        return signal.stop < entry
+    return signal.stop > entry
 
 
 def _simulate_trade(
@@ -183,14 +217,35 @@ def _simulate_trade(
 
     for current_index in range(entry_index, last_index + 1):
         candle = candles_30m[current_index]
+
         if signal.side is Side.LONG:
+            if candle.open <= signal.stop:
+                exit_price = candle.open
+                exit_reason = "stop_gap"
+                exit_index = current_index
+                break
+            if candle.open >= target:
+                exit_price = target
+                exit_reason = "target"
+                exit_index = current_index
+                break
             stop_hit = candle.low <= signal.stop
             target_hit = candle.high >= target
         else:
+            if candle.open >= signal.stop:
+                exit_price = candle.open
+                exit_reason = "stop_gap"
+                exit_index = current_index
+                break
+            if candle.open <= target:
+                exit_price = target
+                exit_reason = "target"
+                exit_index = current_index
+                break
             stop_hit = candle.high >= signal.stop
             target_hit = candle.low <= target
 
-        # Conservative intrabar assumption: if both were touched, stop wins.
+        # Conservative intrabar assumption: if both were touched after the open, stop wins.
         if stop_hit:
             exit_price = signal.stop
             exit_reason = "stop"
@@ -250,11 +305,19 @@ def _empty_report(symbol: str, config: BacktestConfig) -> BacktestReport:
         symbol=symbol,
         signal_count=0,
         cost_rejections=0,
+        invalidated_before_entry=0,
         trades=(),
         starting_equity=config.starting_equity,
         final_equity=config.starting_equity,
         net_r=0.0,
+        gross_r=0.0,
+        total_cost_r=0.0,
         profit_factor=0.0,
+        gross_profit_factor=0.0,
         win_rate=0.0,
         max_drawdown=0.0,
+        average_holding_hours=0.0,
+        stop_exits=0,
+        target_exits=0,
+        timeout_exits=0,
     )
