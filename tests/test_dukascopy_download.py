@@ -111,3 +111,8 @@ def test_connection_reset_is_retried(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result is not None
     assert result["timestamp"] == payload["timestamp"]
     assert calls == 2
+
+
+def test_endpoint_symbol_accepts_index_cfd_notation() -> None:
+    assert endpoint_symbol("USATECH.IDX/USD") == "USATECH.IDX-USD"
+    assert endpoint_symbol("USA500.IDX/USD") == "USA500.IDX-USD"
