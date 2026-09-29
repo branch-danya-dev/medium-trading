@@ -12,7 +12,7 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 - Market: spot FX.
 - Symbols: EUR/USD, GBP/USD, USD/JPY, AUD/USD.
 - Core data timeframes: 4h, 1h, 30m.
-- Current strategy candidate: 4H Time-Series Momentum.
+- Current strategy candidate: 4H Mean Reversion / Range Trading.
 - Starting equity model: USD 1,000.
 - Default risk: 0.5% of equity per trade.
 - Maximum combined open risk: 1.0% of equity.
@@ -26,7 +26,9 @@ Trend Pullback has been evaluated and is REJECTED: it was negative before costs 
 
 Volatility Breakout has been evaluated and is REJECTED: it was negative before costs on out-of-sample data across all four MVP pairs. Do not tune or revive it without an explicit new research task.
 
-4H Time-Series Momentum is the current fixed baseline candidate. Parameters are locked before its first evaluation: 30-bar 4H momentum lookback, signal only when a new 4H candle closes, ATR14 volatility estimate, 2 ATR stop, 3R target, and 240 M30 bars (5 days) maximum holding. It does not use 1H or 30m entry triggers. Do not tune these parameters on out-of-sample results.
+4H Time-Series Momentum has been evaluated and is REJECTED: it was negative before costs on out-of-sample data across all four MVP pairs. Do not tune or revive it without an explicit new research task.
+
+4H Mean Reversion / Range Trading is the current fixed baseline candidate. Parameters are locked before its first evaluation: prior 20-bar 4H mean and standard deviation, entry at an absolute z-score of at least 2.0, 30-bar efficiency-ratio range filter at or below 0.35, ATR14 volatility estimate, 1.5 ATR stop, target fixed at the prior 20-bar mean, signal only when a new 4H candle closes, and 192 M30 bars (4 days) maximum holding. It does not use 1H or 30m entry triggers. Do not tune these parameters on out-of-sample results.
 
 ## Architecture rules
 
@@ -35,8 +37,9 @@ Volatility Breakout has been evaluated and is REJECTED: it was negative before c
 3. Strategy code must not place orders directly.
 4. Risk and transaction-cost checks happen before execution.
 5. Position management must be deterministic and testable.
-6. Prefer plain Python and small modules over frameworks and services.
-7. Add abstraction only when a second real implementation needs it.
+6. A strategy may emit an explicit target when the hypothesis requires a structural exit; otherwise the backtest may use the configured R-multiple target.
+7. Prefer plain Python and small modules over frameworks and services.
+8. Add abstraction only when a second real implementation needs it.
 
 ## Explicit non-goals
 
