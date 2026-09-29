@@ -70,7 +70,8 @@ def evaluate_daily_strategy(
     config: BacktestConfig,
     years: tuple[int, ...] = (2023, 2024, 2025),
     timezone: str = "America/New_York",
-    required_session_time: tuple[int, int] = (9, 30),
+    required_session_time: tuple[int, int] | None = (9, 30),
+    minimum_session_bars: int = 0,
 ) -> DailyStrategyEvaluation:
     tz = ZoneInfo(timezone)
     yearly: list[DailyYearEvaluation] = []
@@ -84,6 +85,7 @@ def evaluate_daily_strategy(
             year=year,
             timezone=tz,
             required_session_time=required_session_time,
+            minimum_session_bars=minimum_session_bars,
         )
         if not session_dates:
             continue
@@ -296,20 +298,29 @@ def _session_dates(
     *,
     year: int,
     timezone: ZoneInfo,
-    required_session_time: tuple[int, int],
+    required_session_time: tuple[int, int] | None,
+    minimum_session_bars: int,
 ):
-    hour, minute = required_session_time
-    return tuple(
-        sorted(
-            {
-                local.date()
-                for candle in candles
-                if (local := candle.timestamp.astimezone(timezone)).year == year
-                and local.hour == hour
-                and local.minute == minute
-            }
-        )
-    )
+    by_date: dict[object, list[datetime]] = defaultdict(list)
+    for candle in candles:
+        local = candle.timestamp.astimezone(timezone)
+        if local.year == year:
+            by_date[local.date()].append(local)
+
+    required = required_session_time
+    eligible = []
+    for session_date, timestamps in by_date.items():
+        if len(timestamps) < minimum_session_bars:
+            continue
+        if required is not None:
+            hour, minute = required
+            if not any(
+                timestamp.hour == hour and timestamp.minute == minute
+                for timestamp in timestamps
+            ):
+                continue
+        eligible.append(session_date)
+    return tuple(sorted(eligible))
 
 
 def _profit_factor(values: Iterable[float]) -> float:
