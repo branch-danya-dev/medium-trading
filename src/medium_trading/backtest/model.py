@@ -11,8 +11,13 @@ class BacktestConfig:
     target_r: float = 2.0
     max_holding_bars: int = 48
     round_trip_cost_pips: float = 1.2
+    fee_bps_per_side: float | None = None
+    slippage_bps_per_side: float = 0.0
     cost_stress_multiplier: float = 1.0
     minimum_cost_multiple: float = 8.0
+    max_holding_minutes: int | None = None
+    required_contiguous_context_bars: int = 0
+    required_contiguous_future_bars: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,6 +33,8 @@ class BacktestTrade:
     net_r: float
     cost_r: float
     exit_reason: str
+    fee_r: float = 0.0
+    slippage_r: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,3 +57,5 @@ class BacktestReport:
     stop_exits: int
     target_exits: int
     timeout_exits: int
+    gap_context_rejections: int = 0
+    gap_signal_rejections: int = 0
