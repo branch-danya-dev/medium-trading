@@ -397,3 +397,31 @@ def test_daily_evaluate_parser_accepts_crypto_momentum(monkeypatch) -> None:
     args = captured[0]
     assert args.strategy == "crypto-intraday-momentum-continuation"
     assert args.cost == ["BTC/USD=50"]
+
+
+def test_crypto_trend_long_defaults() -> None:
+    assert cli._strategy_backtest_defaults("crypto-trend-long") == (2.0, 48)
+
+
+def test_btc_long_evaluate_parser_uses_fixed_baseline_defaults(monkeypatch) -> None:
+    captured = []
+
+    monkeypatch.setattr(cli, "_btc_long_evaluate", captured.append)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "medium-trading",
+            "btc-long-evaluate",
+            "--data",
+            "data/crypto/BTC_USD_M30.csv",
+        ],
+    )
+
+    cli.main()
+
+    args = captured[0]
+    assert args.data == "data/crypto/BTC_USD_M30.csv"
+    assert args.cost_usd == 50.0
+    assert args.starting_equity == 10_000.0
+    assert args.risk == 0.005
