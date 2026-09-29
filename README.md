@@ -245,6 +245,39 @@ Do not tune the feature list, model parameters, threshold, or pair selection aft
 result. A positive historical walk-forward would justify a later paper-forward test, not a profitability
 claim.
 
+The already-inspected 2026 Mean Reversion period can be used only as a frozen diagnostic check of this
+exact ML filter. Train on the historical files, then apply the unchanged model to the separate 2026
+forward files:
+
+    medium-trading ml-forward-evaluate ^
+      --train-dataset EUR/USD=data/EUR_USD_M30.csv ^
+      --train-dataset GBP/USD=data/GBP_USD_M30.csv ^
+      --train-dataset USD/JPY=data/USD_JPY_M30.csv ^
+      --train-dataset AUD/USD=data/AUD_USD_M30.csv ^
+      --train-dataset USD/CAD=data/USD_CAD_M30.csv ^
+      --train-dataset NZD/USD=data/NZD_USD_M30.csv ^
+      --train-dataset EUR/GBP=data/EUR_GBP_M30.csv ^
+      --train-dataset EUR/JPY=data/EUR_JPY_M30.csv ^
+      --forward-dataset EUR/USD=data/forward_2026/EUR_USD_M30.csv ^
+      --forward-dataset GBP/USD=data/forward_2026/GBP_USD_M30.csv ^
+      --forward-dataset USD/JPY=data/forward_2026/USD_JPY_M30.csv ^
+      --forward-dataset AUD/USD=data/forward_2026/AUD_USD_M30.csv ^
+      --forward-dataset USD/CAD=data/forward_2026/USD_CAD_M30.csv ^
+      --forward-dataset NZD/USD=data/forward_2026/NZD_USD_M30.csv ^
+      --forward-dataset EUR/GBP=data/forward_2026/EUR_GBP_M30.csv ^
+      --forward-dataset EUR/JPY=data/forward_2026/EUR_JPY_M30.csv ^
+      --trade-start 2026-01-02 ^
+      --trade-end 2026-09-18 ^
+      --cost EUR/USD=1.0 --cost GBP/USD=1.2 ^
+      --cost USD/JPY=1.0 --cost AUD/USD=1.2 ^
+      --cost USD/CAD=1.5 --cost NZD/USD=1.5 ^
+      --cost EUR/GBP=1.5 --cost EUR/JPY=1.5 ^
+      --json artifacts/mean_reversion_ml_forward_2026.json
+
+This diagnostic trains only on labels known before the 2026 window and reports the same selected trade
+set at ordinary and 2x modeled costs. It is not a pristine final holdout because the underlying 2026
+Mean Reversion results have already been inspected.
+
 ## Status
 
 Automatic Dukascopy date-range download, manual CSV import, and historical multi-pair evaluation are
