@@ -86,11 +86,31 @@ class WalkForwardEvaluation:
     per_symbol_model_2x_costs: dict[str, TradeMetrics]
 
 
+@dataclass(frozen=True, slots=True)
+class FrozenForwardEvaluation:
+    feature_names: tuple[str, ...]
+    model_params: dict[str, object]
+    prediction_threshold_r: float
+    trade_start: datetime
+    trade_end: datetime
+    train_samples: int
+    test_samples: int
+    selected_samples: int
+    baseline: TradeMetrics
+    baseline_2x_costs: TradeMetrics
+    model: TradeMetrics
+    model_2x_costs: TradeMetrics
+    per_symbol_model: dict[str, TradeMetrics]
+    per_symbol_model_2x_costs: dict[str, TradeMetrics]
+
+
 def extract_mean_reversion_samples(
     *,
     symbol: str,
     candles: tuple[Candle, ...],
     config: BacktestConfig,
+    trade_start: datetime | None = None,
+    trade_end: datetime | None = None,
 ) -> tuple[TradeSample, ...]:
     strategy = MeanReversionStrategy()
     report = run_backtest(
@@ -98,6 +118,8 @@ def extract_mean_reversion_samples(
         candles_30m=candles,
         strategy=strategy,
         config=config,
+        trade_start=trade_start,
+        trade_end=trade_end,
     )
     candles_4h = aggregate_candles(candles, 240)
     ends_4h = [candle.timestamp + timedelta(hours=4) for candle in candles_4h]
@@ -229,6 +251,119 @@ def evaluate_mean_reversion_ml_filter(
             for symbol in symbols
         },
     )
+
+
+def evaluate_mean_reversion_ml_forward(
+    training_samples: Iterable[TradeSample],
+    forward_samples: Iterable[TradeSample],
+    *,
+    trade_start: datetime,
+    trade_end: datetime,
+) -> FrozenForwardEvaluation:
+    if trade_end < trade_start:
+        raise ValueError("trade_end cannot be before trade_start")
+
+    regressor = _load_regressor()
+    train = tuple(
+        sorted(
+            (
+                sample
+                for sample in training_samples
+                if sample.exit_time < trade_start
+            ),
+            key=lambda sample: sample.entry_time,
+        )
+    )
+    entry_start = trade_start + timedelta(minutes=30)
+    entry_end = trade_end + timedelta(minutes=30)
+    test = tuple(
+        sorted(
+            (
+                sample
+                for sample in forward_samples
+                if entry_start <= sample.entry_time <= entry_end
+            ),
+            key=lambda sample: sample.entry_time,
+        )
+    )
+
+    if len(train) < 100:
+        raise ValueError(
+            f"not enough pre-forward training samples: {len(train)}; need at least 100"
+        )
+    if not test:
+        raise ValueError("forward window contains no trade samples")
+
+    model = regressor(**MODEL_PARAMS)
+    model.fit(
+        [sample.features for sample in train],
+        [sample.net_r for sample in train],
+    )
+    predictions = model.predict([sample.features for sample in test])
+    selected = tuple(
+        sample
+        for sample, prediction in zip(test, predictions, strict=True)
+        if prediction > PREDICTION_THRESHOLD_R
+    )
+
+    symbols = sorted({sample.symbol for sample in test})
+    return FrozenForwardEvaluation(
+        feature_names=FEATURE_NAMES,
+        model_params=dict(MODEL_PARAMS),
+        prediction_threshold_r=PREDICTION_THRESHOLD_R,
+        trade_start=trade_start,
+        trade_end=trade_end,
+        train_samples=len(train),
+        test_samples=len(test),
+        selected_samples=len(selected),
+        baseline=_metrics(test),
+        baseline_2x_costs=_metrics(test, cost_multiplier=2.0),
+        model=_metrics(selected),
+        model_2x_costs=_metrics(selected, cost_multiplier=2.0),
+        per_symbol_model={
+            symbol: _metrics(
+                sample for sample in selected if sample.symbol == symbol
+            )
+            for symbol in symbols
+        },
+        per_symbol_model_2x_costs={
+            symbol: _metrics(
+                (sample for sample in selected if sample.symbol == symbol),
+                cost_multiplier=2.0,
+            )
+            for symbol in symbols
+        },
+    )
+
+
+def forward_evaluation_payload(
+    evaluation: FrozenForwardEvaluation,
+) -> dict[str, object]:
+    return {
+        "feature_names": list(evaluation.feature_names),
+        "model": {
+            "type": "HistGradientBoostingRegressor",
+            "params": evaluation.model_params,
+            "prediction_threshold_r": evaluation.prediction_threshold_r,
+        },
+        "trade_start": evaluation.trade_start.isoformat(),
+        "trade_end": evaluation.trade_end.isoformat(),
+        "train_samples": evaluation.train_samples,
+        "test_samples": evaluation.test_samples,
+        "selected_samples": evaluation.selected_samples,
+        "baseline": asdict(evaluation.baseline),
+        "baseline_2x_costs": asdict(evaluation.baseline_2x_costs),
+        "filtered_model": asdict(evaluation.model),
+        "filtered_model_2x_costs": asdict(evaluation.model_2x_costs),
+        "per_symbol_model": {
+            symbol: asdict(metrics)
+            for symbol, metrics in evaluation.per_symbol_model.items()
+        },
+        "per_symbol_model_2x_costs": {
+            symbol: asdict(metrics)
+            for symbol, metrics in evaluation.per_symbol_model_2x_costs.items()
+        },
+    }
 
 
 def evaluation_payload(evaluation: WalkForwardEvaluation) -> dict[str, object]:
