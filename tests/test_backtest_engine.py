@@ -51,11 +51,13 @@ class OneShotStrategy:
         stop: float = 1.0990,
         target: float | None = None,
         trigger_length: int = 16,
+        minimum_stop_distance: float | None = None,
     ) -> None:
         self.side = side
         self.stop = stop
         self.target = target
         self.trigger_length = trigger_length
+        self.minimum_stop_distance = minimum_stop_distance
 
     def evaluate(self, context: StrategyContext) -> Signal | None:
         if len(context.candles_30m) != self.trigger_length:
@@ -69,6 +71,7 @@ class OneShotStrategy:
             strategy=self.name,
             reasons=("test",),
             target=self.target,
+            minimum_stop_distance=self.minimum_stop_distance,
         )
 
 
@@ -329,3 +332,41 @@ def test_gold_cost_unit_uses_one_cent_price_increment() -> None:
 def test_crypto_cost_unit_uses_whole_usd_price_points() -> None:
     assert pip_size("BTC/USD") == 1.0
     assert pip_size("ETH/USD") == 1.0
+
+
+
+def test_entry_relative_stop_floor_uses_actual_next_open() -> None:
+    candles = [_candle(index) for index in range(20)]
+    candles[16] = _candle(
+        16,
+        open_=1.1000,
+        high=1.1025,
+        low=1.0995,
+        close=1.1020,
+    )
+    candles[17] = _candle(
+        17,
+        open_=1.1010,
+        high=1.1035,
+        low=1.1002,
+        close=1.1030,
+    )
+
+    report = run_backtest(
+        symbol="EUR/USD",
+        candles_30m=tuple(candles),
+        strategy=OneShotStrategy(
+            stop=1.1005,
+            minimum_stop_distance=0.0020,
+        ),
+        config=BacktestConfig(
+            target_r=1.0,
+            round_trip_cost_pips=1.0,
+            minimum_cost_multiple=1.0,
+        ),
+    )
+
+    assert len(report.trades) == 1
+    trade = report.trades[0]
+    assert trade.entry == pytest.approx(1.1010)
+    assert trade.stop == pytest.approx(1.0990)
