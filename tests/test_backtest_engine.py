@@ -85,3 +85,18 @@ def test_backtest_enters_next_bar_and_deducts_costs() -> None:
     assert trade.cost_r == pytest.approx(0.1)
     assert trade.net_r == pytest.approx(1.9)
     assert report.final_equity == pytest.approx(1009.5)
+
+
+def test_trade_start_prevents_warmup_signals_from_becoming_trades() -> None:
+    candles = tuple(_candle(index) for index in range(20))
+
+    report = run_backtest(
+        symbol="EUR/USD",
+        candles_30m=candles,
+        strategy=OneShotStrategy(),
+        config=BacktestConfig(round_trip_cost_pips=1.0),
+        trade_start=candles[17].timestamp,
+    )
+
+    assert report.signal_count == 0
+    assert not report.trades

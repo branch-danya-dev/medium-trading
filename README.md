@@ -78,16 +78,6 @@ medium-trading backtest \
   --round-trip-cost-pips 1.2
 ```
 
-A cost stress run is explicit:
-
-```bash
-medium-trading backtest \
-  --symbol EUR/USD \
-  --data data/EUR_USD_M30.csv \
-  --round-trip-cost-pips 1.2 \
-  --cost-stress 2
-```
-
 Current simulation assumptions are deliberately conservative:
 
 - strategy sees closed candles only;
@@ -99,11 +89,33 @@ Current simulation assumptions are deliberately conservative:
 - round-trip trading costs are deducted from every trade;
 - a setup is rejected if expected target movement is less than 8x modeled costs.
 
-These are baseline research assumptions, not a claim that Trend Pullback has validated edge.
+## Multi-pair chronological evaluation
+
+The evaluation command is the default strategy gate. It runs each pair through a chronological
+60% train / 20% validation / 20% out-of-sample split and repeats the out-of-sample run at 2x costs.
+
+```bash
+medium-trading evaluate \
+  --dataset EUR/USD=data/EUR_USD_M30.csv \
+  --dataset GBP/USD=data/GBP_USD_M30.csv \
+  --dataset USD/JPY=data/USD_JPY_M30.csv \
+  --dataset AUD/USD=data/AUD_USD_M30.csv \
+  --cost EUR/USD=1.0 \
+  --cost GBP/USD=1.2 \
+  --cost USD/JPY=1.0 \
+  --cost AUD/USD=1.2 \
+  --json artifacts/trend_pullback_eval.json
+```
+
+Validation and out-of-sample segments receive historical candles before their start only as indicator
+warmup. No trade may start in that warmup. The out-of-sample segment must not be used for parameter
+tuning.
+
+The multi-pair report is a strategy evaluation, not yet a capital-constrained portfolio simulation.
 
 ## Status
 
-Repository bootstrap plus first historical backtest path. Live/paper execution is intentionally not
-implemented until the strategy survives realistic historical costs and out-of-sample validation.
+Repository bootstrap plus historical multi-pair evaluation path. Live/paper execution is intentionally
+not implemented until the strategy survives realistic historical costs and out-of-sample validation.
 
 See [agent.md](agent.md) before making changes.

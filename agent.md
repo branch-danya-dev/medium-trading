@@ -61,6 +61,14 @@ Every strategy change must answer:
 - Does the result survive realistic spread, commission and slippage?
 - Does it survive a 2x cost stress test before being considered robust?
 
+Validation rules are mandatory:
+
+- keep training, validation and out-of-sample periods chronological;
+- never tune strategy parameters on the out-of-sample segment;
+- preserve enough pre-period candles only as indicator warmup;
+- report ordinary and 2x-cost out-of-sample results;
+- do not call a strategy profitable from one pair or one in-sample period.
+
 Never claim profitability from an in-sample backtest.
 
 ## Development workflow

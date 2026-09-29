@@ -54,6 +54,7 @@ def run_backtest(
     candles_30m: tuple[Candle, ...],
     strategy: Strategy,
     config: BacktestConfig,
+    trade_start: datetime | None = None,
 ) -> BacktestReport:
     _validate_config(config)
     if len(candles_30m) < 3:
@@ -74,6 +75,10 @@ def run_backtest(
     index = 0
     while index < len(candles_30m) - 1:
         decision_time = candles_30m[index].timestamp + timedelta(minutes=30)
+        if trade_start is not None and decision_time < trade_start:
+            index += 1
+            continue
+
         one_hour_count = bisect_right(ends_1h, decision_time)
         four_hour_count = bisect_right(ends_4h, decision_time)
 
@@ -101,10 +106,7 @@ def run_backtest(
             config.round_trip_cost_pips * config.cost_stress_multiplier
         )
         expected_move_pips = config.target_r * risk_pips
-        if (
-            effective_cost_pips <= 0
-            or expected_move_pips / effective_cost_pips < config.minimum_cost_multiple
-        ):
+        if expected_move_pips / effective_cost_pips < config.minimum_cost_multiple:
             cost_rejections += 1
             index += 1
             continue
