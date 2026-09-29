@@ -1,5 +1,5 @@
 from collections import Counter
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from statistics import mean, median
 
 from medium_trading.backtest.engine import run_backtest
