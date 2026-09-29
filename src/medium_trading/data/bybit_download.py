@@ -42,6 +42,7 @@ def build_kline_url(
     start_ms: int,
     end_ms: int,
     limit: int = _PAGE_LIMIT,
+    base_url: str = _BASE_URL,
 ) -> str:
     normalized_symbol = symbol.strip().upper()
     normalized_category = category.strip().lower()
@@ -64,7 +65,7 @@ def build_kline_url(
             "limit": limit,
         }
     )
-    return f"{_BASE_URL}?{query}"
+    return f"{base_url.rstrip('/')}?{query}"
 
 
 def decode_kline_payload(
@@ -128,6 +129,7 @@ def download_m30(
     start: date,
     end: date,
     progress: Callable[[int, int], None] | None = None,
+    base_url: str = _BASE_URL,
 ) -> BybitDownloadResult:
     if end < start:
         raise ValueError("end date cannot be before start date")
@@ -157,6 +159,7 @@ def download_m30(
             category=category,
             start_ms=cursor_ms,
             end_ms=chunk_end_exclusive - 1,
+            base_url=base_url,
         )
         page = decode_kline_payload(
             payload,
@@ -200,12 +203,14 @@ def _fetch_kline_page(
     category: str,
     start_ms: int,
     end_ms: int,
+    base_url: str = _BASE_URL,
 ) -> Mapping[str, object]:
     url = build_kline_url(
         symbol=symbol,
         category=category,
         start_ms=start_ms,
         end_ms=end_ms,
+        base_url=base_url,
     )
     attempts = len(_RETRY_DELAYS) + 1
 
