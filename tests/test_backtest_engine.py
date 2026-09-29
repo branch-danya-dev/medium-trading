@@ -100,3 +100,34 @@ def test_trade_start_prevents_warmup_signals_from_becoming_trades() -> None:
 
     assert report.signal_count == 0
     assert not report.trades
+
+
+class ContextSizeStrategy:
+    name = "context_size"
+
+    def __init__(self) -> None:
+        self.maximum_30m = 0
+        self.maximum_1h = 0
+        self.maximum_4h = 0
+
+    def evaluate(self, context: StrategyContext) -> Signal | None:
+        self.maximum_30m = max(self.maximum_30m, len(context.candles_30m))
+        self.maximum_1h = max(self.maximum_1h, len(context.candles_1h))
+        self.maximum_4h = max(self.maximum_4h, len(context.candles_4h))
+        return None
+
+
+def test_backtest_bounds_strategy_history() -> None:
+    strategy = ContextSizeStrategy()
+    candles = tuple(_candle(index) for index in range(2_200))
+
+    run_backtest(
+        symbol="EUR/USD",
+        candles_30m=candles,
+        strategy=strategy,
+        config=BacktestConfig(round_trip_cost_pips=1.0),
+    )
+
+    assert strategy.maximum_30m <= 256
+    assert strategy.maximum_1h <= 256
+    assert strategy.maximum_4h <= 256
