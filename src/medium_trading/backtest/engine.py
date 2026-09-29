@@ -6,6 +6,8 @@ from medium_trading.strategy.base import Strategy
 
 from .model import BacktestConfig, BacktestReport, BacktestTrade
 
+_CONTEXT_WINDOW = 256
+
 
 def pip_size(symbol: str) -> float:
     normalized = symbol.replace("_", "/").upper()
@@ -85,9 +87,9 @@ def run_backtest(
 
         context = StrategyContext(
             symbol=symbol,
-            candles_4h=candles_4h[:four_hour_count],
-            candles_1h=candles_1h[:one_hour_count],
-            candles_30m=candles_30m[: index + 1],
+            candles_4h=_tail(candles_4h, four_hour_count),
+            candles_1h=_tail(candles_1h, one_hour_count),
+            candles_30m=_tail(candles_30m, index + 1),
         )
         signal = strategy.evaluate(context)
         if signal is None:
@@ -148,6 +150,11 @@ def run_backtest(
         win_rate=(wins / len(trades)) if trades else 0.0,
         max_drawdown=max_drawdown,
     )
+
+
+def _tail(candles: tuple[Candle, ...], end: int) -> tuple[Candle, ...]:
+    start = max(0, end - _CONTEXT_WINDOW)
+    return candles[start:end]
 
 
 def _simulate_trade(
