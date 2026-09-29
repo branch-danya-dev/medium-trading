@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
+from medium_trading.backtest.model import BacktestTrade
 from medium_trading.direct_ml import (
     FEATURE_NAMES,
     OpportunitySample,
@@ -7,7 +8,6 @@ from medium_trading.direct_ml import (
     evaluation_payload,
 )
 from medium_trading.domain import Side
-from medium_trading.backtest.model import BacktestTrade
 
 
 def _trade(
