@@ -100,3 +100,40 @@ def build_v07_walk_forward_snapshots(
 
     snapshots.sort(key=lambda item: item.timestamp)
     return tuple(snapshots)
+
+
+
+def build_v07_2026_forward_snapshots(
+    *,
+    development_samples: Iterable[MarketObserverSample],
+    forward_samples: Iterable[MarketObserverSample],
+) -> tuple[ObserverSnapshot, ...]:
+    """
+    Produce frozen v0.7 messages for 2026 trading-policy validation.
+
+    Development samples must be entirely pre-2026. Forward samples must be
+    entirely inside 2026. The existing chronological fold logic then fits,
+    calibrates and selects the observer threshold only from pre-2026 data while
+    inference is emitted for every 2026 structural event.
+    """
+    development = tuple(development_samples)
+    forward = tuple(forward_samples)
+    if not development:
+        raise ValueError("2026 observer runtime requires development samples")
+    if not forward:
+        raise ValueError("2026 observer runtime requires forward samples")
+
+    if any(sample.event_time.year >= 2026 for sample in development):
+        raise ValueError("2026 observer runtime development data must be pre-2026")
+    if any(sample.event_time.year != 2026 for sample in forward):
+        raise ValueError("2026 observer runtime forward samples must be in 2026")
+
+    snapshots = build_v07_walk_forward_snapshots(
+        (*development, *forward),
+        test_years=(2026,),
+    )
+    if not snapshots:
+        raise ValueError("2026 observer runtime produced no snapshots")
+    if any(snapshot.timestamp.year != 2026 for snapshot in snapshots):
+        raise ValueError("2026 observer runtime emitted non-2026 snapshot")
+    return snapshots
