@@ -937,6 +937,62 @@ top 1/5/10/20% reversal-rate lift, past-only operating-point precision/recall/F1
 noise/correction quality and hierarchical probability quality. 2026 remains untouched. Do not tune v0.5
 from its first result.
 
+v0.5 showed that class imbalance was only part of the problem. The balanced binary model improved combined
+ranking modestly, but not consistently in both years, and the separate NOISE-vs-CORRECTION stage remained
+close to random. The next experiment therefore keeps the same binary reversal observer and adds only one
+new information source: genuine taker trade flow.
+
+## Market Observer v0.6
+
+Bybit publishes daily gzip archives of public BTCUSDT trades. v0.6 streams those archives and aggregates
+them into completed UTC M5 flow buckets without persisting raw ticks.
+
+Download and aggregate the frozen 2023-2025 flow history:
+
+    medium-trading download-bybit-trade-flow `
+      --symbol BTCUSDT `
+      --from 2023-01-01 `
+      --to 2025-12-31 `
+      --workers 2 `
+      --output-dir data/bybit/flow
+
+Completed days are cached under data/bybit/flow/daily, so an interrupted multi-year collection can resume.
+The final combined file is:
+
+    data/bybit/flow/BTCUSDT_TRADE_FLOW_M5.csv
+
+Every UTC day must contain exactly 288 contiguous M5 flow buckets; missing buckets are rejected rather than
+synthesized. Each aggregate stores taker-buy/taker-sell quantity, notional and trade count.
+
+v0.6 adds only causal flow features to the frozen v0.5 weighted binary REAL_REVERSAL observer:
+- taker quantity delta over 5m / 15m / 30m / 2h;
+- taker notional delta over 5m / 30m;
+- buy/sell trade-count imbalance over 5m / 30m;
+- trend-aligned delta over 5m / 30m / 2h;
+- 5m-vs-30m delta acceleration;
+- current trade-count activity relative to the trailing 2h average;
+- average buy-vs-sell trade-size imbalance;
+- 30m persistence of aggressive flow with/against the prevailing H4 trend.
+
+The exact v0.5 weighted binary model without flow is rerun inside the same experiment as a control. Sampling,
+labels, base market features, CatBoost parameters, chronological calibration/threshold-validation and the
+2024/2025 test folds remain unchanged.
+
+Run:
+
+    medium-trading btc-market-observer-v0-6-evaluate `
+      --m5 "data/bybit/state/BTCUSDT_M5.csv" `
+      --open-interest "data/bybit/state/BTCUSDT_OPEN_INTEREST_30M.csv" `
+      --account-ratio "data/bybit/state/BTCUSDT_ACCOUNT_RATIO_30M.csv" `
+      --funding "data/bybit/state/BTCUSDT_FUNDING.csv" `
+      --trade-flow "data/bybit/flow/BTCUSDT_TRADE_FLOW_M5.csv" `
+      --json artifacts/bybit_btcusdt_market_observer_v0_6.json
+
+Judge v0.6 only by incremental information: flow-enhanced versus the exact v0.5 control on ROC-AUC, PR-AUC,
+PR-AUC lift, calibration and top-probability reversal concentration, separately in 2024 and 2025 as well as
+combined. Flow must improve ranking directionally in both yearly folds to justify keeping it. Do not tune
+v0.6 from the first result, and do not use 2026.
+
 The legacy daily gate remains strict and conjunctive for the older daily-income studies: at least 250 eligible sessions, at least 300 trades, >=70%
 active-session rate, >=45% profitable active days, positive average net R/session, net PF >=1.15,
 2x-cost PF >1.00, at least 2 positive yearly folds, >=60% positive months, worst day no worse than -2R,
