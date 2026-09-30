@@ -1015,3 +1015,44 @@ def test_observer_long_policy_v2_parser_uses_frozen_defaults(
     assert args.slippage_bps_per_side == 2.0
     assert args.starting_equity == 1_000.0
     assert args.risk == 0.005
+
+
+
+def test_observer_long_policy_v2_forward_2026_parser_uses_frozen_paths(
+    monkeypatch,
+) -> None:
+    captured = []
+
+    monkeypatch.setattr(
+        cli,
+        "_btc_observer_long_policy_v2_forward_2026_evaluate",
+        captured.append,
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "medium-trading",
+            "btc-observer-long-policy-v2-forward-2026-evaluate",
+        ],
+    )
+
+    cli.main()
+
+    args = captured[0]
+    assert args.dev_m5 == "data/bybit/state/BTCUSDT_M5.csv"
+    assert args.dev_trade_flow == (
+        "data/bybit/flow/BTCUSDT_TRADE_FLOW_M5.csv"
+    )
+    assert args.forward_m30 == "data/bybit/forward2026/BTCUSDT_M30.csv"
+    assert args.forward_m5 == (
+        "data/bybit/forward2026/state/BTCUSDT_M5.csv"
+    )
+    assert args.forward_trade_flow == (
+        "data/bybit/forward2026/flow/BTCUSDT_TRADE_FLOW_M5.csv"
+    )
+    assert args.symbol == "BTCUSDT"
+    assert args.fee_bps_per_side == 5.5
+    assert args.slippage_bps_per_side == 2.0
+    assert args.starting_equity == 1_000.0
+    assert args.risk == 0.005
