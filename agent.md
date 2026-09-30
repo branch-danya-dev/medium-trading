@@ -13,7 +13,7 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 - Legacy FX universe: EUR/USD, GBP/USD, USD/JPY, AUD/USD plus four external FX pairs used in validation.
 - Current market: Crypto, starting with BTC/USD.
 - Core data timeframe for the current candidate: native M5 with completed M15/M30/H1/H4 context.
-- Current research candidate: one-shot 2026 trading validation of frozen Trend LONG bot + Market Observer v0.7 + LongObserverPolicy v2.
+- Current research candidate: BTC Trend LONG Entry Strategy v2 — persistent H4 regime, tested only on 2023-2025 development data against a matched-random entry control.
 - Default project starting equity model: USD 1,000. The BTC Trend LONG v1 diagnostic baseline uses USD 10,000 so R-to-USD interpretation is explicit.
 - Default risk: 0.5% of equity per trade.
 - Maximum combined open risk: 1.0% of equity.
@@ -587,6 +587,62 @@ not been used to design or tune the entry strategy, observer threshold or v2 pol
   were still external validation;
 - after the first result, 2026 trading outcomes are observed evidence and cannot be described as untouched
   trading validation again.
+
+The frozen 2026 full-stack trading test FAILED. On 89 economic-pass entries, the baseline Trend LONG v1.1
+stream was already negative before costs: gross -8.22R, gross PF 0.859. After modeled 5.5 bps/side fees
+plus 2.0 bps/side slippage it produced -24.91R, PF 0.643 and 12.10% max drawdown. Frozen Observer v0.7
++ Policy v2 did not rescue the entry stream: managed gross -9.00R, net -25.69R, PF 0.631, 12.44% drawdown,
+and final USD 1,000 equity 877.76. At 2x costs managed net was -42.37R and final equity 807.37.
+Only 2 confirmed observer exits occurred; their total incremental value was -0.78R. The forward trading
+gate failed every condition except minimum trade count. 2026 entry/trading outcomes are now observed and
+must never be used as a clean forward window again.
+
+The current frozen task is BTC Trend LONG Entry Strategy v2. The goal is to prove or reject information
+in the entry itself before any further Observer/Policy work:
+- Market Observer v0.7 and LongObserverPolicy v2 remain frozen and are not used in this experiment;
+- 2026 must not be used for parameter selection, filtering, threshold selection or v2 evaluation;
+- development data is frozen to 2023-01-01 through 2025-12-31;
+- baseline is the exact economic-pass Trend LONG v1.1 executed stream;
+- v2 is allowed exactly one structural modification: persistent H4 trend confirmation;
+- the M30 setup is unchanged: bearish M30 pullback followed by bullish confirmation close above pullback high;
+- the ATR14 minimum stop distance, 2R target, 24-hour holding horizon, fees and slippage are unchanged;
+- persistent H4 confirmation reuses the existing 3-H4-bar lookback and adds no fitted numeric threshold:
+  * EMA20 must rise on each of the last 3 completed H4 steps;
+  * each of the last 3 completed H4 closes must remain above its contemporaneous EMA20;
+  * current completed H4 close must exceed the close 3 H4 bars ago;
+- evaluate only economic-pass trades with target/expected-cost ratio >= 8;
+- before judging PnL, compare actual entries with a deterministic matched-random control:
+  * same calendar year, month and UTC hour where possible;
+  * same causal H4 regime definition;
+  * preserve each real trade's stop-distance fraction;
+  * same 2R target and 24-hour horizon;
+  * exclude real strategy entry timestamps from random candidates;
+  * require >=90% matched-trade coverage and >=5 random matches per trade on average;
+- report gross mean/R/PF, net R/PF, 2x-cost results, MFE/MAE, +1R/+2R-before-stop rates, stop-distance bins,
+  yearly results, matched-random gross edge and bootstrap 95% confidence intervals;
+- diagnostic stop-distance bins are fixed before the first v2 result: <0.8%, 0.8-1.0%, 1.0-1.5%, >=1.5%;
+  they are descriptive only and must not become v2 filters after reading the result;
+- the frozen Entry v2 information gate requires:
+  * at least 150 economic-pass trades;
+  * positive combined gross R;
+  * gross PF >=1.10;
+  * positive gross R in at least 2 of 3 development years;
+  * matched-random coverage >=90%;
+  * >=5 random matches per trade on average;
+  * positive mean gross edge versus matched random;
+  * bootstrap 95% lower bound of matched-random gross edge >0;
+  * +1R-before-stop rate above matched random;
+- the frozen Entry v2 economic gate additionally requires:
+  * net R >0 and PF >1.0 after normal execution costs;
+  * net R >0 and PF >1.0 at 2x execution costs;
+  * v2 net R > baseline v1.1 net R;
+  * v2 gross PF > baseline v1.1 gross PF;
+- funding is intentionally not used to decide whether the entry contains information. If v2 first passes both
+  information and execution-cost gates, add funding before any deployment claim;
+- if v2 fails, do not mine 2026 for a stop-width/day-of-week/filter patch. Mark this entry hypothesis rejected
+  and move to a materially different entry hypothesis or timeframe;
+- if v2 passes, freeze it and start a new paper-forward validation from October 2026. The paper-forward sample
+  size/gate must be fixed before observing results.
 
 Daily Income Gate is frozen before the first result. A strategy passes only if all conditions hold across the combined fixed test years:
 - at least 250 eligible session days;
