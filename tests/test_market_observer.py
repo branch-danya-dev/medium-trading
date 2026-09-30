@@ -805,4 +805,6 @@ def test_v07_forward_uses_pre_2026_fit_and_scores_frozen_window(
     assert result["unresolved_only"]["samples"] >= 100
     assert result["full"]["confirmed"]["roc_auc"] > 0.80
     assert result["unresolved_only"]["confirmed"]["roc_auc"] > 0.80
+    assert result["frozen_gate"]["passes"] is True
+    assert all(result["frozen_gate"]["conditions"].values())
     assert result["monthly_unresolved"]
