@@ -9,7 +9,7 @@ The first version is intentionally small:
 - research markets are tested separately rather than forcing one universal strategy;
 - legacy FX research remains reproducible;
 - current market: Crypto, starting with BTC/USD;
-- current candidate: Bybit BTCUSDT Market Structure Model v0.2;
+- current candidate: Bybit BTCUSDT Market Structure Event Model v0.3;
 - daily-income consistency is now a primary evaluation target;
 - starting equity model: USD 1,000;
 - default risk: 0.5% per trade, 1.0% maximum combined open risk;
@@ -782,6 +782,53 @@ Run with the already-downloaded state bundle:
 The first v0.2 result is still a feasibility test. Judge it by class distribution, clear/excluded sample
 counts, reversal precision/recall/lift, ROC AUC and stability across both development folds. Do not tune
 the 0.50 threshold from the first result.
+
+Market Structure Model v0.2 failed as an ML discriminator. Combined 2024-2025 precision was 53.39%
+against a 50.44% reversal base rate, precision lift was 1.058x, recall was 49.45%, ROC AUC was 0.524
+and Brier score was 0.289. The weak lift appeared in both development folds and deteriorated from
+1.076x in 2024 to 1.035x in 2025. The structural extractor itself remained useful enough to test
+directly, but the periodic-snapshot classifier is not promoted to trade management.
+
+## Market Structure Event Model v0.3
+
+v0.3 removes ML entirely and tests whether the already-frozen causal structure rules improve management
+of the same economic-pass Trend LONG v1.1 candidate stream. Samples are no longer created every 15 minutes.
+The system reacts only after an observable M5 structural event has completed.
+
+Frozen event policy:
+- SWEEP_RECLAIM: M5 trades below the current confirmed swing low and closes back above it inside the
+  frozen 3-bar reclaim window -> HOLD;
+- BODY_BREAK_UNCONFIRMED: M5 closes at least 0.10 ATR5 below the swing low -> WAIT;
+- BREAK_ACCEPTED: the break reaches at least 3 closes below the level inside the 5-bar acceptance window
+  -> EXIT;
+- RETEST_HELD: after a break, price retests within 0.15 ATR5 of the level and closes below it -> EXIT;
+- BREAK_RECLAIMED: a body break closes back above the level inside 3 M5 bars -> HOLD / cancel WAIT;
+- structural EXIT is executed at the next M5 open, never at the confirming candle close;
+- the original hard stop, 2R target and 24-hour maximum holding remain active and unchanged;
+- the candidate stream is fixed. An earlier structural exit never introduces a replacement trade;
+- fee/slippage assumptions remain 5.5 bps + 2.0 bps per side, and ordinary plus 2x-cost results are reported;
+- 2026 remains untouched.
+
+The report deliberately includes three layers: the source M30 trade result, a control re-simulation of the
+same trade on native M5, and the managed M5 result. This separates any benefit from finer execution
+resolution from the actual event-management effect.
+
+Run:
+
+    medium-trading btc-market-structure-events-v0-3-evaluate `
+      --m30 "data/bybit/BTCUSDT_M30.csv" `
+      --m5 "data/bybit/state/BTCUSDT_M5.csv" `
+      --symbol BTCUSDT `
+      --fee-bps-per-side 5.5 `
+      --slippage-bps-per-side 2.0 `
+      --starting-equity 10000 `
+      --risk 0.005 `
+      --json artifacts/bybit_btcusdt_market_structure_events_v0_3.json
+
+Judge v0.3 by managed-vs-original M5 net R, profit factor, drawdown, 2x-cost robustness, yearly stability,
+the number of structural exits that improve versus worsen the original outcome, delta-R by BREAK_ACCEPTED
+and RETEST_HELD, body-break resolution counts and SWEEP_RECLAIM follow-through. Do not add ML or tune the
+frozen structure thresholds before reading this deterministic result.
 
 The legacy daily gate remains strict and conjunctive for the older daily-income studies: at least 250 eligible sessions, at least 300 trades, >=70%
 active-session rate, >=45% profitable active days, positive average net R/session, net PF >=1.15,
