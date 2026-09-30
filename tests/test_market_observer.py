@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
 from medium_trading import market_observer as observer
+from medium_trading import market_observer_v05 as observer_v05
 from medium_trading.domain import Candle
 
 
@@ -248,3 +249,112 @@ def test_walk_forward_observer_trains_catboost_and_random_forest(
         assert metrics["per_class"]["REAL_REVERSAL"]["precision"] > 0.70
         assert metrics["real_reversal"]["roc_auc"] > 0.80
         assert metrics["real_reversal"]["probability_bands"]
+
+
+
+def _v05_samples(year: int) -> tuple[observer.MarketObserverSample, ...]:
+    labels = observer.CLEAR_LABELS
+    result = []
+    start = datetime(year, 1, 1, tzinfo=UTC)
+    for day in range(360):
+        for label_index, label in enumerate(labels):
+            event_time = start + timedelta(days=day, hours=label_index * 2)
+            result.append(
+                observer.MarketObserverSample(
+                    event_time=event_time,
+                    label_end_time=event_time
+                    + timedelta(hours=observer.LABEL_HORIZON_HOURS),
+                    trend_side="BULL" if day % 2 == 0 else "BEAR",
+                    event_type=(
+                        "SWEEP_RECLAIM"
+                        if label == "NOISE"
+                        else "BODY_BREAK"
+                    ),
+                    features=_synthetic_features(label, day + label_index),
+                    state_class=label,
+                    defended_level=100.0,
+                    atr5=10.0,
+                )
+            )
+    return tuple(result)
+
+
+def test_v05_hierarchical_observer_uses_past_only_calibration(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        observer_v05,
+        "REVERSAL_PARAMS",
+        {
+            **observer_v05.REVERSAL_PARAMS,
+            "iterations": 20,
+            "depth": 4,
+        },
+    )
+    monkeypatch.setattr(
+        observer_v05,
+        "UNWEIGHTED_REVERSAL_PARAMS",
+        {
+            **observer_v05.UNWEIGHTED_REVERSAL_PARAMS,
+            "iterations": 20,
+            "depth": 4,
+        },
+    )
+    monkeypatch.setattr(
+        observer_v05,
+        "STATE_PARAMS",
+        {
+            **observer_v05.STATE_PARAMS,
+            "iterations": 20,
+            "depth": 4,
+        },
+    )
+
+    samples = (
+        *_v05_samples(2023),
+        *_v05_samples(2024),
+        *_v05_samples(2025),
+    )
+
+    payload = observer_v05.evaluate_market_observer_v05(samples)
+
+    assert payload["research_scope"]["features_changed"] is False
+    assert payload["research_scope"]["labels_changed"] is False
+    assert payload["architecture"]["stage_1_weighting"] == (
+        "CatBoost auto_class_weights=Balanced"
+    )
+
+    assert [fold["test_year"] for fold in payload["folds"]] == [2024, 2025]
+    for fold in payload["folds"]:
+        assert fold["fit_samples"] > 300
+        assert fold["calibration_samples"] >= 60
+        assert fold["threshold_validation_samples"] >= 60
+        assert fold["weighted_reversal"]["selected_threshold"] > 0
+        assert (
+            fold["weighted_reversal"]["test"]["roc_auc"]
+            > 0.80
+        )
+        assert (
+            fold["noise_correction"]["test"]["roc_auc"]
+            > 0.80
+        )
+
+    combined = payload["combined"]
+    assert combined["clear_samples"] == 2160
+    assert (
+        combined["weighted_reversal"]["ranking_and_calibration"]["roc_auc"]
+        > 0.80
+    )
+    assert combined["hierarchical"]["macro_f1"] > 0.70
+    assert (
+        combined["hierarchical"]["per_class"]["REAL_REVERSAL"][
+            "roc_auc_ovr"
+        ]
+        > 0.80
+    )
+
+
+def test_v05_reversal_model_is_balanced_but_control_is_not() -> None:
+    assert observer_v05.REVERSAL_PARAMS["auto_class_weights"] == "Balanced"
+    assert "auto_class_weights" not in observer_v05.UNWEIGHTED_REVERSAL_PARAMS
+    assert observer_v05.STATE_PARAMS["loss_function"] == "Logloss"
