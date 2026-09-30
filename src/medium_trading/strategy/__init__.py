@@ -7,6 +7,7 @@ from medium_trading.strategy.crypto_intraday_momentum_continuation import (
 from medium_trading.strategy.crypto_trend_long import (
     CryptoTrendLongStrategy,
     CryptoTrendLongV11Strategy,
+    CryptoTrendLongV2Strategy,
 )
 from medium_trading.strategy.gold_london_ny_breakout import (
     GoldLondonNewYorkBreakoutStrategy,
@@ -31,6 +32,7 @@ __all__ = [
     "CryptoIntradayMomentumContinuationStrategy",
     "CryptoTrendLongStrategy",
     "CryptoTrendLongV11Strategy",
+    "CryptoTrendLongV2Strategy",
     "GoldLondonNewYorkBreakoutStrategy",
     "GoldNewYorkExhaustionReversalStrategy",
     "GoldNewYorkMomentumContinuationStrategy",
