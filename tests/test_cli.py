@@ -672,3 +672,35 @@ def test_market_structure_v0_2_parser_uses_frozen_defaults(monkeypatch) -> None:
     assert args.slippage_bps_per_side == 2.0
     assert args.starting_equity == 10_000.0
     assert args.risk == 0.005
+
+
+
+def test_market_structure_events_v0_3_parser_uses_frozen_defaults(monkeypatch) -> None:
+    captured = []
+
+    monkeypatch.setattr(
+        cli,
+        "_btc_market_structure_events_v0_3_evaluate",
+        captured.append,
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "medium-trading",
+            "btc-market-structure-events-v0-3-evaluate",
+            "--m30",
+            "data/bybit/BTCUSDT_M30.csv",
+            "--m5",
+            "data/bybit/state/BTCUSDT_M5.csv",
+        ],
+    )
+
+    cli.main()
+
+    args = captured[0]
+    assert args.symbol == "BTCUSDT"
+    assert args.fee_bps_per_side == 5.5
+    assert args.slippage_bps_per_side == 2.0
+    assert args.starting_equity == 10_000.0
+    assert args.risk == 0.005
