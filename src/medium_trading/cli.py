@@ -2000,6 +2000,11 @@ def _btc_market_observer_v0_7_forward_evaluate(
         f"confirmed="
         f"{payload['pre_forward_split']['confirmed_threshold']:.6f}"
     )
+    gate = result["frozen_gate"]
+    print(
+        f"frozen forward gate={'PASS' if gate['passes'] else 'FAIL'} "
+        f"conditions={gate['conditions']}"
+    )
 
     if args.json_output:
         output = Path(args.json_output)
