@@ -64,6 +64,7 @@ from medium_trading.market_state_model import (
 from medium_trading.market_state_model import (
     evaluation_payload as market_state_payload,
 )
+from medium_trading.market_structure_events import evaluate_market_structure_events_v03
 from medium_trading.market_structure_model import (
     evaluate_structural_state_v02,
     extract_structural_state_samples,
@@ -456,6 +457,30 @@ def main() -> None:
     market_structure.add_argument("--risk", type=float, default=0.005)
     market_structure.add_argument("--json", dest="json_output")
 
+    market_structure_events = subparsers.add_parser(
+        "btc-market-structure-events-v0-3-evaluate"
+    )
+    market_structure_events.add_argument("--m30", required=True)
+    market_structure_events.add_argument("--m5", required=True)
+    market_structure_events.add_argument("--symbol", default="BTCUSDT")
+    market_structure_events.add_argument(
+        "--fee-bps-per-side",
+        type=float,
+        default=5.5,
+    )
+    market_structure_events.add_argument(
+        "--slippage-bps-per-side",
+        type=float,
+        default=2.0,
+    )
+    market_structure_events.add_argument(
+        "--starting-equity",
+        type=float,
+        default=10_000.0,
+    )
+    market_structure_events.add_argument("--risk", type=float, default=0.005)
+    market_structure_events.add_argument("--json", dest="json_output")
+
     args = parser.parse_args()
     if args.command == "download-dukascopy":
         _download_dukascopy(args)
@@ -497,6 +522,8 @@ def main() -> None:
         _btc_market_state_v0_1_evaluate(args)
     elif args.command == "btc-market-structure-v0-2-evaluate":
         _btc_market_structure_v0_2_evaluate(args)
+    elif args.command == "btc-market-structure-events-v0-3-evaluate":
+        _btc_market_structure_events_v0_3_evaluate(args)
 
 
 def _download_dukascopy(args: argparse.Namespace) -> None:
@@ -1322,6 +1349,55 @@ def _btc_market_structure_v0_2_evaluate(args: argparse.Namespace) -> None:
             encoding="utf-8",
         )
         print(f"wrote Market Structure Model v0.2 report to {output}")
+
+
+def _btc_market_structure_events_v0_3_evaluate(args: argparse.Namespace) -> None:
+    candles_30m = load_candles(Path(args.m30))
+    candles_5m = load_candles(Path(args.m5))
+    payload = evaluate_market_structure_events_v03(
+        candles_30m=candles_30m,
+        candles_5m=candles_5m,
+        symbol=args.symbol,
+        fee_bps_per_side=args.fee_bps_per_side,
+        slippage_bps_per_side=args.slippage_bps_per_side,
+        starting_equity=args.starting_equity,
+        risk_fraction=args.risk,
+    )
+    combined = payload["combined"]
+    original = combined["original_m5"]
+    managed = combined["managed_m5"]
+    events = combined["event_diagnostics"]
+
+    print("BTCUSDT Market Structure Event Model v0.3")
+    print(
+        f"trades={original['trades']} "
+        f"original_net={original['net_r']:.2f}R "
+        f"managed_net={managed['net_r']:.2f}R "
+        f"delta={combined['delta_net_r']:+.2f}R"
+    )
+    print(
+        f"original_PF={original['profit_factor']:.3f} "
+        f"managed_PF={managed['profit_factor']:.3f} "
+        f"original_DD={original['max_drawdown']:.1%} "
+        f"managed_DD={managed['max_drawdown']:.1%}"
+    )
+    print(
+        f"structural_exits={events['structural_exits']} "
+        f"improved={events['structural_exit_improved']} "
+        f"worsened={events['structural_exit_worsened']}"
+    )
+    print(f"events={events['event_counts']}")
+    print(f"break outcomes={events['body_break_outcomes']}")
+    print(f"sweep followthrough={events['sweep_reclaim_followthrough']}")
+
+    if args.json_output:
+        output = Path(args.json_output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(
+            json.dumps(payload, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        print(f"wrote Market Structure Event Model v0.3 report to {output}")
 
 
 def _strategy_from_name(name: str) -> Strategy:
