@@ -1056,3 +1056,30 @@ def test_observer_long_policy_v2_forward_2026_parser_uses_frozen_paths(
     assert args.slippage_bps_per_side == 2.0
     assert args.starting_equity == 1_000.0
     assert args.risk == 0.005
+
+
+
+def test_btc_entry_v2_parser_uses_frozen_development_defaults(
+    monkeypatch,
+) -> None:
+    captured = []
+
+    monkeypatch.setattr(cli, "_btc_entry_v2_evaluate", captured.append)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "medium-trading",
+            "btc-entry-v2-evaluate",
+        ],
+    )
+
+    cli.main()
+
+    args = captured[0]
+    assert args.data == "data/bybit/BTCUSDT_M30.csv"
+    assert args.symbol == "BTCUSDT"
+    assert args.fee_bps_per_side == 5.5
+    assert args.slippage_bps_per_side == 2.0
+    assert args.starting_equity == 1_000.0
+    assert args.risk == 0.005
