@@ -13,7 +13,7 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 - Legacy FX universe: EUR/USD, GBP/USD, USD/JPY, AUD/USD plus four external FX pairs used in validation.
 - Current market: Crypto, starting with BTC/USD.
 - Core data timeframe for the current candidate: native M5 with completed M15/M30/H1/H4 context.
-- Current research candidate: Bybit BTCUSDT Market Observer v0.5 for hierarchical rare-reversal observation.
+- Current research candidate: Bybit BTCUSDT Market Observer v0.6 for incremental taker-flow reversal information.
 - Default project starting equity model: USD 1,000. The BTC Trend LONG v1 diagnostic baseline uses USD 10,000 so R-to-USD interpretation is explicit.
 - Default risk: 0.5% of equity per trade.
 - Maximum combined open risk: 1.0% of equity.
@@ -387,10 +387,55 @@ features and market labels remain exactly v0.4:
 - 2026 remains untouched;
 - v0.5 must not emit BUY/SELL/HOLD/EXIT decisions and must not be evaluated by trading PnL.
 
-Do not tune v0.5 after its first result. The main test is whether balanced binary CatBoost materially
-improves reversal ranking/detection over its unweighted binary control in both 2024 and 2025 while
-past-only calibration remains usable. If weighting does not improve the signal, reject class imbalance
-as the primary explanation rather than escalating model complexity.
+Market Observer v0.5 showed that class imbalance is not the primary bottleneck. Combined weighted
+binary CatBoost improved only modestly over the identical unweighted control: ROC-AUC 0.5652 vs 0.5636
+and PR-AUC 0.1069 vs 0.0992. The advantage was not stable across both years: weighted was better in 2024
+(ROC-AUC 0.5709 / PR-AUC 0.0914 vs 0.5574 / 0.0863), while unweighted was slightly better in 2025
+(0.5750 / 0.1268 vs weighted 0.5718 / 0.1239). The separate NOISE-vs-CORRECTION stage was approximately
+random in both years at ROC-AUC about 0.514, so do not continue that second-stage classifier. The useful
+remaining signal is ranking: the weighted model concentrated REAL_REVERSAL meaningfully in the highest
+probability tail, but not strongly enough for a reliable observer.
+
+The current frozen task is Market Observer v0.6. It tests whether genuine Bybit taker trade flow adds
+incremental information to the same binary REAL_REVERSAL-vs-TREND_SURVIVES observer:
+- sampling, H4 trend regime, structural event generation and v0.4 labels are unchanged;
+- the base v0.4 feature set is unchanged;
+- the model remains the v0.5 weighted binary CatBoost with the same parameters, chronological fit,
+  60-day calibration window, later 60-day threshold-validation window, 8-hour embargo and 2024/2025
+  development folds;
+- the v0.5 weighted binary observer without trade flow is rerun inside v0.6 as the exact control;
+- the only experimental change is adding genuine taker-flow features from Bybit public historical trades;
+- source path is https://public.bybit.com/trading/BTCUSDT/ with daily gzip CSV archives;
+- use 2023-01-01 through 2025-12-31 only; never download or use 2026 for v0.6;
+- downloader streams raw gzip archives and persists only completed UTC M5 aggregates; raw ticks are not
+  stored by this project;
+- each completed day is cached as aggregated M5 data so interrupted multi-year downloads can resume;
+- require exactly 288 contiguous M5 flow buckets per UTC day; never synthesize missing trade-flow buckets;
+- archive fields required are timestamp, symbol, side, size and price;
+- Buy/Sell is interpreted as taker/aggressor side, consistent with Bybit public trade semantics;
+- M5 aggregates store taker buy/sell quantity, taker buy/sell notional and buy/sell trade counts;
+- v0.6 adds only these 15 causal features:
+  * taker delta ratio over 5m / 15m / 30m / 2h;
+  * taker notional delta ratio over 5m / 30m;
+  * taker trade-count imbalance over 5m / 30m;
+  * trend-aligned taker delta ratio over 5m / 30m / 2h;
+  * 5m-vs-30m delta acceleration;
+  * current 5m trade-count activity versus the 2h average;
+  * average buy-vs-sell trade-size imbalance on the completed event M5;
+  * 30m persistence of aggressive flow with or against the prevailing H4 trend;
+- an event at time T may use only trade-flow buckets whose M5 interval is fully completed by T;
+- do not add order-book, liquidation, new candle indicators, new labels or model tuning in v0.6;
+- compare baseline-v0.5 and flow-enhanced models on identical samples and splits;
+- primary evidence is fold-by-fold and combined delta in ROC-AUC, PR-AUC, PR-AUC lift, Brier/ECE and
+  top-probability reversal concentration;
+- flow is useful only if ranking improvement is directionally consistent in both 2024 and 2025, not merely
+  positive in the combined aggregate;
+- report all flow-feature importances so we can see whether CatBoost actually uses the new information;
+- v0.6 remains an observer research task only and emits no trading action or PnL conclusion.
+
+Do not tune v0.6 after its first result. If genuine taker flow does not improve reversal ranking
+consistently, do not add more boosting complexity; reassess the event/label formulation or move to a
+different market-information source.
 
 Daily Income Gate is frozen before the first result. A strategy passes only if all conditions hold across the combined fixed test years:
 - at least 250 eligible session days;
