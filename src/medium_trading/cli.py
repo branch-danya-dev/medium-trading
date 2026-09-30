@@ -74,6 +74,10 @@ from medium_trading.market_observer_v07 import (
     build_confirmed_observer_samples,
     evaluate_market_observer_v07,
 )
+from medium_trading.market_observer_v07_audit import (
+    classify_v07_label_resolution,
+    evaluate_market_observer_v07_overlap_audit,
+)
 from medium_trading.market_state_model import (
     evaluate_market_state_v01,
     extract_market_state_samples,
@@ -547,6 +551,16 @@ def main() -> None:
     market_observer_v07.add_argument("--trade-flow", required=True)
     market_observer_v07.add_argument("--json", dest="json_output")
 
+    market_observer_v07_audit = subparsers.add_parser(
+        "btc-market-observer-v0-7-overlap-audit"
+    )
+    market_observer_v07_audit.add_argument("--m5", required=True)
+    market_observer_v07_audit.add_argument("--open-interest", required=True)
+    market_observer_v07_audit.add_argument("--account-ratio", required=True)
+    market_observer_v07_audit.add_argument("--funding", required=True)
+    market_observer_v07_audit.add_argument("--trade-flow", required=True)
+    market_observer_v07_audit.add_argument("--json", dest="json_output")
+
     args = parser.parse_args()
     if args.command == "download-dukascopy":
         _download_dukascopy(args)
@@ -600,6 +614,8 @@ def main() -> None:
         _btc_market_observer_v0_6_evaluate(args)
     elif args.command == "btc-market-observer-v0-7-evaluate":
         _btc_market_observer_v0_7_evaluate(args)
+    elif args.command == "btc-market-observer-v0-7-overlap-audit":
+        _btc_market_observer_v0_7_overlap_audit(args)
 
 
 def _download_dukascopy(args: argparse.Namespace) -> None:
@@ -1750,6 +1766,81 @@ def _btc_market_observer_v0_7_evaluate(args: argparse.Namespace) -> None:
             encoding="utf-8",
         )
         print(f"wrote Market Observer v0.7 report to {output}")
+
+
+def _btc_market_observer_v0_7_overlap_audit(
+    args: argparse.Namespace,
+) -> None:
+    candles_5m = load_candles(Path(args.m5))
+    open_interest = load_open_interest(Path(args.open_interest))
+    account_ratio = load_account_ratio(Path(args.account_ratio))
+    funding = load_funding(Path(args.funding))
+    trade_flow = load_trade_flow(Path(args.trade_flow))
+
+    base_samples = extract_market_observer_samples(
+        candles_5m=candles_5m,
+        open_interest=open_interest,
+        account_ratio=account_ratio,
+        funding=funding,
+    )
+    flow_samples = augment_market_observer_samples_with_trade_flow(
+        base_samples,
+        trade_flow,
+    )
+    samples = build_confirmed_observer_samples(
+        samples=flow_samples,
+        candles_5m=candles_5m,
+        trade_flow=trade_flow,
+    )
+    resolution = classify_v07_label_resolution(
+        samples=samples,
+        candles_5m=candles_5m,
+    )
+    payload = evaluate_market_observer_v07_overlap_audit(
+        samples=samples,
+        resolution_by_time=resolution,
+    )
+    combined = payload["combined"]
+    resolution_summary = combined["resolution"]
+    full = combined["full_v0_7"]["confirmed"]
+    clean = combined["unresolved_only"]["confirmed"]
+
+    print("BTCUSDT Market Observer v0.7 label-overlap audit")
+    print(
+        f"clear={combined['clear_samples']} "
+        f"resolved_before_T15="
+        f"{resolution_summary['resolved_before_prediction']} "
+        f"({resolution_summary['resolved_fraction']:.1%}) "
+        f"unresolved={resolution_summary['unresolved_at_prediction']}"
+    )
+    print(
+        f"full ROC_AUC={full['roc_auc']:.3f} "
+        f"PR_AUC={full['pr_auc']:.3f} "
+        f"PR_lift={full['pr_auc_lift_vs_base']:.2f}x"
+    )
+    print(
+        f"unresolved-only ROC_AUC={clean['roc_auc']:.3f} "
+        f"PR_AUC={clean['pr_auc']:.3f} "
+        f"PR_lift={clean['pr_auc_lift_vs_base']:.2f}x "
+        f"base={clean['base_rate']:.1%}"
+    )
+    print(
+        "resolved labels="
+        f"{resolution_summary['resolved_final_label_distribution']}"
+    )
+    print(
+        "unresolved labels="
+        f"{resolution_summary['unresolved_final_label_distribution']}"
+    )
+
+    if args.json_output:
+        output = Path(args.json_output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(
+            json.dumps(payload, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        print(f"wrote v0.7 label-overlap audit to {output}")
 
 
 def _strategy_from_name(name: str) -> Strategy:
