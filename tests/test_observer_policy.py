@@ -9,6 +9,7 @@ from medium_trading.backtest.model import BacktestTrade
 from medium_trading.domain import Candle, Side
 from medium_trading.market_observer import MarketObserverSample
 from medium_trading.market_observer_v07 import FEATURE_NAMES
+from medium_trading.observer_long_integration_v2 import _policy_v2_gate
 from medium_trading.observer_policy import (
     LongObserverPolicy,
     LongPolicyAction,
@@ -16,7 +17,6 @@ from medium_trading.observer_policy import (
     observer_snapshot_from_probability,
 )
 from medium_trading.observer_policy_v2 import LongObserverPolicyV2
-from medium_trading.observer_long_integration_v2 import _policy_v2_gate
 
 
 def _bar(
