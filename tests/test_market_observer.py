@@ -7,6 +7,7 @@ from medium_trading import market_observer_v05 as observer_v05
 from medium_trading import market_observer_v06 as observer_v06
 from medium_trading import market_observer_v07 as observer_v07
 from medium_trading import market_observer_v07_audit as observer_v07_audit
+from medium_trading import market_observer_v07_forward as observer_v07_forward
 from medium_trading.data.bybit_trade_flow import TradeFlowPoint
 from medium_trading.domain import Candle
 
@@ -695,3 +696,113 @@ def test_v07_overlap_audit_scores_unresolved_without_retraining(
         combined["unresolved_only"]["confirmed"]["samples"]
         == combined["unresolved_only"]["samples"]
     )
+
+
+
+def _v07_forward_samples_2026(
+    days: int = 260,
+) -> tuple[observer.MarketObserverSample, ...]:
+    samples = []
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    labels = observer.CLEAR_LABELS
+
+    for day in range(days):
+        for label_index, label in enumerate(labels):
+            disturbance_time = start + timedelta(
+                days=day,
+                hours=label_index * 2,
+            )
+            base_features = _synthetic_features(label, day + label_index)
+            flow_center = {
+                "NOISE": 0.8,
+                "CORRECTION": 0.0,
+                "REAL_REVERSAL": -0.8,
+            }[label]
+            flow_features = tuple(
+                flow_center + (index % 3 - 1) * 0.01
+                for index in range(len(observer_v06.FLOW_FEATURE_NAMES))
+            )
+            confirmation_center = 1.5 if label == "REAL_REVERSAL" else -1.0
+            confirmation_features = tuple(
+                confirmation_center + (index % 5 - 2) * 0.01
+                for index in range(
+                    len(observer_v07.CONFIRMATION_FEATURE_NAMES)
+                )
+            )
+            samples.append(
+                observer.MarketObserverSample(
+                    event_time=disturbance_time + timedelta(minutes=15),
+                    label_end_time=disturbance_time
+                    + timedelta(hours=observer.LABEL_HORIZON_HOURS),
+                    trend_side="BULL" if day % 2 == 0 else "BEAR",
+                    event_type=(
+                        "SWEEP_RECLAIM"
+                        if label == "NOISE"
+                        else "BODY_BREAK"
+                    ),
+                    features=(
+                        *base_features,
+                        *flow_features,
+                        *confirmation_features,
+                    ),
+                    state_class=label,
+                    defended_level=100.0,
+                    atr5=10.0,
+                )
+            )
+    return tuple(samples)
+
+
+def test_v07_forward_uses_pre_2026_fit_and_scores_frozen_window(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        observer_v06,
+        "REVERSAL_PARAMS",
+        {
+            **observer_v06.REVERSAL_PARAMS,
+            "iterations": 20,
+            "depth": 4,
+        },
+    )
+
+    development = _v07_samples()
+    forward = _v07_forward_samples_2026()
+    resolution = {}
+    for sample in forward:
+        if (
+            sample.state_class in {"NOISE", "CORRECTION"}
+            and sample.event_time.day % 2 == 0
+        ):
+            resolution[sample.event_time] = sample.state_class
+        else:
+            resolution[sample.event_time] = None
+
+    payload = observer_v07_forward.evaluate_market_observer_v07_forward(
+        development_samples=development,
+        forward_samples=forward,
+        resolution_by_time=resolution,
+    )
+
+    scope = payload["research_scope"]
+    assert scope["forward_start"] == "2026-01-01T00:00:00+00:00"
+    assert scope["forward_end_exclusive"] == "2026-09-30T00:00:00+00:00"
+    assert scope["2026_used_for_fit"] is False
+    assert scope["2026_used_for_calibration"] is False
+    assert scope["2026_used_for_threshold_selection"] is False
+
+    split = payload["pre_forward_split"]
+    assert split["fit_samples"] > 300
+    assert split["calibration_samples"] >= 60
+    assert split["threshold_validation_samples"] >= 60
+    assert split["confirmed_threshold"] > 0
+
+    result = payload["forward"]
+    assert result["samples"] == len(forward)
+    assert result["clear_samples"] == len(forward)
+    assert result["resolution"]["resolved_before_prediction"] > 0
+    assert result["unresolved_only"]["samples"] < len(forward)
+    assert result["unresolved_only"]["samples"] >= 100
+    assert result["full"]["confirmed"]["roc_auc"] > 0.80
+    assert result["unresolved_only"]["confirmed"]["roc_auc"] > 0.80
+    assert result["monthly_unresolved"]
