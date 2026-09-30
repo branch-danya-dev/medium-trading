@@ -890,6 +890,53 @@ macro F1, REAL_REVERSAL PR-AUC/ROC-AUC/Brier/calibration, probability bands, cla
 feature importance stability and CatBoost versus RandomForest consistency. v0.4 does not emit BUY/SELL/
 HOLD/EXIT decisions and must not be judged by trading PnL. Do not tune it from the first result.
 
+v0.4 showed weak but repeatable market-only reversal information rather than a deployable observer.
+REAL_REVERSAL was only 8.26% of clear 2024-2025 samples. Multiclass CatBoost never chose REAL_REVERSAL
+as its argmax class, but reversal ranking reached ROC-AUC 0.592 and PR-AUC 0.115 versus an 8.26% base
+rate. RandomForest with balanced_subsample independently reached ROC-AUC 0.595, PR-AUC 0.115 and 1.46x
+reversal precision lift. The signal appeared in both development years, so the next experiment isolates
+the rare-class learning architecture without changing market sampling, labels or features.
+
+## Market Observer v0.5
+
+v0.5 is hierarchical and market-only:
+- Stage 1: REAL_REVERSAL vs NOT_REVERSAL (NOISE + CORRECTION);
+- primary Stage 1 CatBoost uses Logloss plus auto_class_weights=Balanced;
+- an otherwise identical unweighted binary CatBoost is retained as a direct class-imbalance control;
+- Stage 2: CORRECTION vs NOISE, trained only on NOT_REVERSAL samples;
+- no Focal Loss, SMOTE, undersampling, new indicators or label changes.
+
+Each yearly fold now has four chronological regions:
+1. model fit history;
+2. a dedicated 60-day probability-calibration window;
+3. a later dedicated 60-day threshold-validation window;
+4. the untouched calendar-year test fold.
+
+The original 8-hour label embargo remains. Platt-style logistic calibration is fit only on the calibration
+window. A diagnostic reversal threshold is selected by maximum F1 only on the later pre-test validation
+window. Test-year outcomes never select a threshold. Live consumers should still use the calibrated
+probabilities rather than the hard diagnostic class.
+
+The final state probabilities are composed as:
+
+    P(REAL_REVERSAL) = Stage1
+    P(CORRECTION) = (1 - P(REAL_REVERSAL)) * P(CORRECTION | NOT_REVERSAL)
+    P(NOISE) = (1 - P(REAL_REVERSAL)) * (1 - P(CORRECTION | NOT_REVERSAL))
+
+Run:
+
+    medium-trading btc-market-observer-v0-5-evaluate `
+      --m5 "data/bybit/state/BTCUSDT_M5.csv" `
+      --open-interest "data/bybit/state/BTCUSDT_OPEN_INTEREST_30M.csv" `
+      --account-ratio "data/bybit/state/BTCUSDT_ACCOUNT_RATIO_30M.csv" `
+      --funding "data/bybit/state/BTCUSDT_FUNDING.csv" `
+      --json artifacts/bybit_btcusdt_market_observer_v0_5.json
+
+Judge v0.5 primarily by weighted-vs-unweighted reversal ROC-AUC/PR-AUC, PR-AUC lift, calibrated Brier/ECE,
+top 1/5/10/20% reversal-rate lift, past-only operating-point precision/recall/F1 in each fold, Stage-2
+noise/correction quality and hierarchical probability quality. 2026 remains untouched. Do not tune v0.5
+from its first result.
+
 The legacy daily gate remains strict and conjunctive for the older daily-income studies: at least 250 eligible sessions, at least 300 trades, >=70%
 active-session rate, >=45% profitable active days, positive average net R/session, net PF >=1.15,
 2x-cost PF >1.00, at least 2 positive yearly folds, >=60% positive months, worst day no worse than -2R,

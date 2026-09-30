@@ -13,7 +13,7 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 - Legacy FX universe: EUR/USD, GBP/USD, USD/JPY, AUD/USD plus four external FX pairs used in validation.
 - Current market: Crypto, starting with BTC/USD.
 - Core data timeframe for the current candidate: native M5 with completed M15/M30/H1/H4 context.
-- Current research candidate: Bybit BTCUSDT Market Observer v0.4 for market-only noise/correction/real-reversal classification.
+- Current research candidate: Bybit BTCUSDT Market Observer v0.5 for hierarchical rare-reversal observation.
 - Default project starting equity model: USD 1,000. The BTC Trend LONG v1 diagnostic baseline uses USD 10,000 so R-to-USD interpretation is explicit.
 - Default risk: 0.5% of equity per trade.
 - Maximum combined open risk: 1.0% of equity.
@@ -347,9 +347,50 @@ model. It must remain completely independent of open positions and strategy outc
 - v0.4 emits probabilities/state estimates only. It must not issue BUY/SELL/HOLD/EXIT decisions and must
   not be evaluated by trading PnL.
 
-Do not tune v0.4 from its first result. First answer whether market-only features contain stable
-out-of-time information about NOISE/CORRECTION/REAL_REVERSAL, and whether CatBoost materially exceeds
-the fixed RandomForest benchmark in both development folds.
+Market Observer v0.4 did not pass as a deployable observer, but it produced the first
+repeatable market-only reversal signal in this research sequence. Combined 2024-2025 clear samples were
+12,369 with REAL_REVERSAL prevalence 8.26%. Multiclass CatBoost never emitted REAL_REVERSAL as argmax,
+yet its reversal probability ranking reached ROC-AUC 0.592 and PR-AUC 0.115 versus an 8.26% base rate.
+The direction repeated across development folds: 2024 ROC-AUC 0.617 / PR-AUC 0.112 at 7.77% base, and
+2025 ROC-AUC 0.570 / PR-AUC 0.125 at 8.77% base. RandomForest with balanced_subsample independently
+produced ROC-AUC 0.595, PR-AUC 0.115 and 1.46x reversal precision lift, supporting the diagnosis that
+market information exists but the rare class is suppressed by the current multiclass objective. The
+reported v0.4 multiclass ROC-AUC=0.5 is invalid because the metric path fell back to 0.5 after a label-order
+ValueError; do not use that field.
+
+The current frozen task is Market Observer v0.5. It changes the learning architecture only; sampling,
+features and market labels remain exactly v0.4:
+- Stage 1 target is binary REAL_REVERSAL vs NOT_REVERSAL (NOISE + CORRECTION);
+- primary Stage 1 model is CatBoost Logloss with the same 300 iterations, depth=6, learning_rate=0.05,
+  l2_leaf_reg=5 and random_seed=42, plus auto_class_weights=Balanced;
+- a second unweighted binary CatBoost with identical parameters is evaluated as a control so the effect
+  of class balancing is measured directly;
+- Stage 2 is a separate unweighted CatBoost Logloss model trained only on NOT_REVERSAL samples to estimate
+  CORRECTION vs NOISE;
+- no Focal Loss, SMOTE, random undersampling or new features are allowed in v0.5;
+- weighted-model raw scores are calibrated with a Platt-style LogisticRegression on a dedicated historical
+  calibration window that is never used to fit the CatBoost model;
+- each test fold reserves the 60 days immediately before a later 60-day threshold-validation window for
+  calibration; both windows are strictly before the test year and labels must be fully known;
+- the 8-hour label embargo remains in force between historical validation and each test year;
+- the diagnostic REAL_REVERSAL hard threshold is chosen by maximum F1 only on the dedicated historical
+  threshold-validation window; no threshold is selected from 2024/2025 test outcomes;
+- the observer's primary output remains calibrated probabilities, not a hard action;
+- final probabilities are composed hierarchically:
+  P(REAL_REVERSAL)=Stage1,
+  P(CORRECTION)=(1-P(REAL_REVERSAL))*P(CORRECTION|NOT_REVERSAL),
+  P(NOISE)=(1-P(REAL_REVERSAL))*(1-P(CORRECTION|NOT_REVERSAL));
+- report weighted and unweighted reversal ROC-AUC, PR-AUC, PR-AUC lift, Brier, log loss, calibration error,
+  probability quantiles, top 1/5/10/20% reversal-rate lift, past-only operating-point precision/recall/F1,
+  Stage 2 metrics, hierarchical per-class metrics and feature-importance stability;
+- v0.5 remains market-only: no trade entry, stop, target, PnL, R, MFE/MAE, risk, fee or slippage inputs;
+- 2026 remains untouched;
+- v0.5 must not emit BUY/SELL/HOLD/EXIT decisions and must not be evaluated by trading PnL.
+
+Do not tune v0.5 after its first result. The main test is whether balanced binary CatBoost materially
+improves reversal ranking/detection over its unweighted binary control in both 2024 and 2025 while
+past-only calibration remains usable. If weighting does not improve the signal, reject class imbalance
+as the primary explanation rather than escalating model complexity.
 
 Daily Income Gate is frozen before the first result. A strategy passes only if all conditions hold across the combined fixed test years:
 - at least 250 eligible session days;
