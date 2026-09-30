@@ -1199,6 +1199,70 @@ The policy-value gate is frozen before reading the first PnL result:
 This gate measures incremental management value only. A PASS does not by itself prove that the underlying
 Trend LONG strategy is profitable. Do not tune observer v0.7 or the v1 policy after reading this result.
 
+v1 failed the frozen gate. Across 279 fixed trades, baseline net R was -21.45R and managed net R was
+-19.01R, so observer exits added +2.44R in aggregate, but PF fell from 0.890 to 0.864 and max drawdown
+rose slightly from 13.39% to 13.59%. The effect was unstable by year: +6.17R in 2024 and -3.74R in 2025.
+Of 146 observer exits, 98 improved the trade and 48 worsened it; 91 avoided a later baseline stop, while
+32 prematurely exited trades that later reached the 2R target. This shows that the observer signal carries
+economic information, but treating every classification-level reversal signal as an immediate full exit is
+too aggressive.
+
+## Observer -> LONG Trading Policy v2
+
+v2 keeps Market Observer v0.7, its probabilities and its fold thresholds unchanged. Only the policy layer
+changes from a stateless immediate-exit rule to a stateful confirmation rule:
+
+    CLEAR
+      + BULL REAL_REVERSAL_RISK
+      -> WARNING_LONG
+
+    WARNING
+      + later BULL REAL_REVERSAL_RISK
+      -> EXIT_LONG
+
+    WARNING
+      + BULL TREND_SURVIVES
+      -> HOLD_LONG and clear WARNING
+
+    any BEAR snapshot
+      -> NO_ACTION and clear stale BULL WARNING
+
+The second reversal-risk snapshot is independent when its timestamp is strictly later than the snapshot
+that armed WARNING. Event type does not need to differ. Every new trade starts in CLEAR state, so warning
+state never leaks between positions.
+
+Everything else is frozen from v1:
+- same 2024-2025 walk-forward v0.7 snapshots;
+- same fold-specific observer thresholds;
+- same economic-pass Trend LONG v1.1 candidate stream;
+- same entries, stops, 2R targets and 24h holding horizon;
+- same fees/slippage and 2x-cost stress;
+- no entry blocking;
+- no replacement trades;
+- observer still receives no position/PnL state;
+- 2026 trading outcomes remain unused.
+
+Run:
+
+    medium-trading btc-observer-long-policy-v2-evaluate `
+      --json artifacts/bybit_btcusdt_observer_long_policy_v2.json
+
+The frozen v2 gate requires:
+- at least 100 managed trades;
+- positive combined delta net R versus baseline;
+- v2 managed net R > v1 managed net R;
+- v2 PF > baseline PF;
+- v2 PF > v1 PF;
+- v2 max drawdown <= baseline max drawdown;
+- positive delta net R in both 2024 and 2025;
+- confirmed v2 exits add positive total delta net R;
+- v2 2x-cost net R > baseline 2x-cost net R;
+- v2 2x-cost net R > v1 2x-cost net R;
+- fewer premature exits before baseline targets than v1.
+
+This is still an incremental position-management test, not proof of a profitable entry strategy. Do not
+change warning count, reset semantics or probability thresholds after seeing the first v2 result.
+
 The legacy daily gate remains strict and conjunctive for the older daily-income studies: at least 250 eligible sessions, at least 300 trades, >=70%
 active-session rate, >=45% profitable active days, positive average net R/session, net PF >=1.15,
 2x-cost PF >1.00, at least 2 positive yearly folds, >=60% positive months, worst day no worse than -2R,
