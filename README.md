@@ -1132,6 +1132,73 @@ Full-sample metrics and monthly unresolved metrics are reported as diagnostics. 
 are not forward pass/fail gates because no 2026 recalibration is allowed. If this one-shot window fails,
 do not modify v0.7 and rerun the same 2026 period as untouched forward validation.
 
+The one-shot 2026 observer gate passed. On the unresolved-at-T+15 subset, frozen v0.7 produced
+ROC-AUC 0.7278, PR-AUC 0.3015 and 2.135x PR lift versus the delayed control at ROC-AUC 0.5627 /
+PR-AUC 0.1718. Market Observer v0.7 is therefore frozen as forward-validated observer evidence.
+2026 is observed evidence from this point onward.
+
+## Observer -> LONG Trading Policy v1
+
+The observer remains independent from the trading bot. Communication is an in-process, transport-neutral
+`ObserverSnapshot` message:
+
+    ObserverSnapshot(
+        timestamp=...,
+        model_version="market-observer-v0.7",
+        trend_side="BULL",
+        event_type="BODY_BREAK",
+        reversal_probability=...,
+        trend_survives_probability=...,
+        reversal_threshold=...,
+        market_state=...
+    )
+
+The snapshot contains no position, entry, stop, target, risk or PnL state. A separate
+`LongObserverPolicy` translates the market message into position management:
+
+    BULL + REAL_REVERSAL_RISK -> EXIT_LONG
+    BULL + TREND_SURVIVES     -> HOLD_LONG
+    BEAR snapshot             -> NO_ACTION
+
+v1 changes only management of an already-open LONG. Entry selection is unchanged. The candidate stream is
+the fixed economic-pass Trend LONG v1.1 executed stream. An observer exit happens at the next native-M5
+open after the snapshot; a stop-gap or target-gap at that same open has priority. The fold-specific
+observer threshold remains the past-only v0.7 threshold and is never optimized against trading PnL.
+
+The historical runtime generates out-of-time snapshots for 2024 and 2025. Model fit, Platt calibration and
+threshold selection use only earlier clear labels, but inference is performed for every structural event in
+the test year, including events whose eventual research label is AMBIGUOUS. This matches how the observer
+would communicate live.
+
+The first policy experiment deliberately does not block entries and does not add replacement trades after
+an early observer exit. It isolates one question: does the observer improve management of the same open
+LONG positions?
+
+Run:
+
+    medium-trading btc-observer-long-policy-v1-evaluate `
+      --json artifacts/bybit_btcusdt_observer_long_policy_v1.json
+
+The command defaults to:
+- `data/bybit/BTCUSDT_M30.csv`;
+- `data/bybit/state/BTCUSDT_M5.csv`;
+- the existing 2023-2025 OI/account-ratio/funding bundle;
+- `data/bybit/flow/BTCUSDT_TRADE_FLOW_M5.csv`;
+- fee 5.5 bps/side and slippage 2.0 bps/side;
+- USD 1,000 starting equity and 0.5% risk.
+
+The policy-value gate is frozen before reading the first PnL result:
+- at least 100 managed trades;
+- managed net R > baseline net R;
+- managed PF > baseline PF;
+- managed max drawdown <= baseline max drawdown;
+- positive delta net R in both 2024 and 2025;
+- observer-triggered exits add positive total delta net R;
+- managed 2x-cost net R > baseline 2x-cost net R.
+
+This gate measures incremental management value only. A PASS does not by itself prove that the underlying
+Trend LONG strategy is profitable. Do not tune observer v0.7 or the v1 policy after reading this result.
+
 The legacy daily gate remains strict and conjunctive for the older daily-income studies: at least 250 eligible sessions, at least 300 trades, >=70%
 active-session rate, >=45% profitable active days, positive average net R/session, net PF >=1.15,
 2x-cost PF >1.00, at least 2 positive yearly folds, >=60% positive months, worst day no worse than -2R,
