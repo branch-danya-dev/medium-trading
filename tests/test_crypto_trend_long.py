@@ -3,8 +3,8 @@ from datetime import UTC, datetime, timedelta
 from medium_trading.domain import Candle, Side, StrategyContext
 from medium_trading.strategy import (
     CryptoTrendLongStrategy,
-    CryptoTrendLongV11Strategy,
     CryptoTrendLongV2Strategy,
+    CryptoTrendLongV11Strategy,
 )
 
 
