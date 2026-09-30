@@ -912,3 +912,40 @@ def test_market_observer_v0_7_overlap_audit_parser(monkeypatch) -> None:
     assert args.trade_flow.endswith("BTCUSDT_TRADE_FLOW_M5.csv")
     assert not hasattr(args, "starting_equity")
     assert not hasattr(args, "risk")
+
+
+
+def test_market_observer_v0_7_forward_parser_uses_frozen_paths(
+    monkeypatch,
+) -> None:
+    captured = []
+
+    monkeypatch.setattr(
+        cli,
+        "_btc_market_observer_v0_7_forward_evaluate",
+        captured.append,
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "medium-trading",
+            "btc-market-observer-v0-7-forward-evaluate",
+        ],
+    )
+
+    cli.main()
+
+    args = captured[0]
+    assert args.dev_m5 == "data/bybit/state/BTCUSDT_M5.csv"
+    assert args.dev_trade_flow == (
+        "data/bybit/flow/BTCUSDT_TRADE_FLOW_M5.csv"
+    )
+    assert args.forward_m5 == (
+        "data/bybit/forward2026/state/BTCUSDT_M5.csv"
+    )
+    assert args.forward_trade_flow == (
+        "data/bybit/forward2026/flow/BTCUSDT_TRADE_FLOW_M5.csv"
+    )
+    assert not hasattr(args, "starting_equity")
+    assert not hasattr(args, "risk")

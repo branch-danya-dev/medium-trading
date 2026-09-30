@@ -78,6 +78,11 @@ from medium_trading.market_observer_v07_audit import (
     classify_v07_label_resolution,
     evaluate_market_observer_v07_overlap_audit,
 )
+from medium_trading.market_observer_v07_forward import (
+    FORWARD_END,
+    FORWARD_START,
+    evaluate_market_observer_v07_forward,
+)
 from medium_trading.market_state_model import (
     evaluate_market_state_v01,
     extract_market_state_samples,
@@ -561,6 +566,60 @@ def main() -> None:
     market_observer_v07_audit.add_argument("--trade-flow", required=True)
     market_observer_v07_audit.add_argument("--json", dest="json_output")
 
+    market_observer_v07_forward = subparsers.add_parser(
+        "btc-market-observer-v0-7-forward-evaluate"
+    )
+    market_observer_v07_forward.add_argument(
+        "--dev-m5",
+        default="data/bybit/state/BTCUSDT_M5.csv",
+    )
+    market_observer_v07_forward.add_argument(
+        "--dev-open-interest",
+        default="data/bybit/state/BTCUSDT_OPEN_INTEREST_30M.csv",
+    )
+    market_observer_v07_forward.add_argument(
+        "--dev-account-ratio",
+        default="data/bybit/state/BTCUSDT_ACCOUNT_RATIO_30M.csv",
+    )
+    market_observer_v07_forward.add_argument(
+        "--dev-funding",
+        default="data/bybit/state/BTCUSDT_FUNDING.csv",
+    )
+    market_observer_v07_forward.add_argument(
+        "--dev-trade-flow",
+        default="data/bybit/flow/BTCUSDT_TRADE_FLOW_M5.csv",
+    )
+    market_observer_v07_forward.add_argument(
+        "--forward-m5",
+        default="data/bybit/forward2026/state/BTCUSDT_M5.csv",
+    )
+    market_observer_v07_forward.add_argument(
+        "--forward-open-interest",
+        default=(
+            "data/bybit/forward2026/state/"
+            "BTCUSDT_OPEN_INTEREST_30M.csv"
+        ),
+    )
+    market_observer_v07_forward.add_argument(
+        "--forward-account-ratio",
+        default=(
+            "data/bybit/forward2026/state/"
+            "BTCUSDT_ACCOUNT_RATIO_30M.csv"
+        ),
+    )
+    market_observer_v07_forward.add_argument(
+        "--forward-funding",
+        default="data/bybit/forward2026/state/BTCUSDT_FUNDING.csv",
+    )
+    market_observer_v07_forward.add_argument(
+        "--forward-trade-flow",
+        default=(
+            "data/bybit/forward2026/flow/"
+            "BTCUSDT_TRADE_FLOW_M5.csv"
+        ),
+    )
+    market_observer_v07_forward.add_argument("--json", dest="json_output")
+
     args = parser.parse_args()
     if args.command == "download-dukascopy":
         _download_dukascopy(args)
@@ -616,6 +675,8 @@ def main() -> None:
         _btc_market_observer_v0_7_evaluate(args)
     elif args.command == "btc-market-observer-v0-7-overlap-audit":
         _btc_market_observer_v0_7_overlap_audit(args)
+    elif args.command == "btc-market-observer-v0-7-forward-evaluate":
+        _btc_market_observer_v0_7_forward_evaluate(args)
 
 
 def _download_dukascopy(args: argparse.Namespace) -> None:
@@ -1841,6 +1902,118 @@ def _btc_market_observer_v0_7_overlap_audit(
             encoding="utf-8",
         )
         print(f"wrote v0.7 label-overlap audit to {output}")
+
+
+def _btc_market_observer_v0_7_forward_evaluate(
+    args: argparse.Namespace,
+) -> None:
+    dev_candles = load_candles(Path(args.dev_m5))
+    dev_open_interest = load_open_interest(Path(args.dev_open_interest))
+    dev_account_ratio = load_account_ratio(Path(args.dev_account_ratio))
+    dev_funding = load_funding(Path(args.dev_funding))
+    dev_trade_flow = load_trade_flow(Path(args.dev_trade_flow))
+
+    dev_base = extract_market_observer_samples(
+        candles_5m=dev_candles,
+        open_interest=dev_open_interest,
+        account_ratio=dev_account_ratio,
+        funding=dev_funding,
+    )
+    dev_flow = augment_market_observer_samples_with_trade_flow(
+        dev_base,
+        dev_trade_flow,
+    )
+    development = build_confirmed_observer_samples(
+        samples=dev_flow,
+        candles_5m=dev_candles,
+        trade_flow=dev_trade_flow,
+    )
+
+    forward_candles = load_candles(Path(args.forward_m5))
+    forward_open_interest = load_open_interest(
+        Path(args.forward_open_interest)
+    )
+    forward_account_ratio = load_account_ratio(
+        Path(args.forward_account_ratio)
+    )
+    forward_funding = load_funding(Path(args.forward_funding))
+    forward_trade_flow = load_trade_flow(Path(args.forward_trade_flow))
+
+    forward_base = extract_market_observer_samples(
+        candles_5m=forward_candles,
+        open_interest=forward_open_interest,
+        account_ratio=forward_account_ratio,
+        funding=forward_funding,
+        research_start=FORWARD_START,
+        research_end=FORWARD_END,
+    )
+    forward_flow = augment_market_observer_samples_with_trade_flow(
+        forward_base,
+        forward_trade_flow,
+    )
+    forward = build_confirmed_observer_samples(
+        samples=forward_flow,
+        candles_5m=forward_candles,
+        trade_flow=forward_trade_flow,
+    )
+    resolution = classify_v07_label_resolution(
+        samples=forward,
+        candles_5m=forward_candles,
+    )
+
+    payload = evaluate_market_observer_v07_forward(
+        development_samples=development,
+        forward_samples=forward,
+        resolution_by_time=resolution,
+    )
+    result = payload["forward"]
+    full = result["full"]["confirmed"]
+    clean = result["unresolved_only"]["confirmed"]
+    resolution_summary = result["resolution"]
+
+    print("BTCUSDT Market Observer v0.7 frozen 2026 forward")
+    print(
+        f"samples={result['samples']} "
+        f"clear={result['clear_samples']} "
+        f"excluded={result['excluded_samples']}"
+    )
+    print(
+        f"resolved_before_T15="
+        f"{resolution_summary['resolved_before_prediction']} "
+        f"({resolution_summary['resolved_fraction']:.1%}) "
+        f"unresolved={resolution_summary['unresolved_at_prediction']}"
+    )
+    print(
+        f"full ROC_AUC={full['roc_auc']:.3f} "
+        f"PR_AUC={full['pr_auc']:.3f} "
+        f"PR_lift={full['pr_auc_lift_vs_base']:.2f}x"
+    )
+    print(
+        f"unresolved-only ROC_AUC={clean['roc_auc']:.3f} "
+        f"PR_AUC={clean['pr_auc']:.3f} "
+        f"PR_lift={clean['pr_auc_lift_vs_base']:.2f}x "
+        f"base={clean['base_rate']:.1%}"
+    )
+    print(
+        f"frozen thresholds: control="
+        f"{payload['pre_forward_split']['control_threshold']:.6f}, "
+        f"confirmed="
+        f"{payload['pre_forward_split']['confirmed_threshold']:.6f}"
+    )
+    gate = result["frozen_gate"]
+    print(
+        f"frozen forward gate={'PASS' if gate['passes'] else 'FAIL'} "
+        f"conditions={gate['conditions']}"
+    )
+
+    if args.json_output:
+        output = Path(args.json_output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(
+            json.dumps(payload, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        print(f"wrote v0.7 frozen 2026 forward report to {output}")
 
 
 def _strategy_from_name(name: str) -> Strategy:

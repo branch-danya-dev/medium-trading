@@ -13,7 +13,7 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 - Legacy FX universe: EUR/USD, GBP/USD, USD/JPY, AUD/USD plus four external FX pairs used in validation.
 - Current market: Crypto, starting with BTC/USD.
 - Core data timeframe for the current candidate: native M5 with completed M15/M30/H1/H4 context.
-- Current research candidate: Bybit BTCUSDT Market Observer v0.7 label-overlap audit for unresolved-at-T+15 reversal quality.
+- Current research candidate: frozen Bybit BTCUSDT Market Observer v0.7 one-shot 2026 forward validation.
 - Default project starting equity model: USD 1,000. The BTC Trend LONG v1 diagnostic baseline uses USD 10,000 so R-to-USD interpretation is explicit.
 - Default risk: 0.5% of equity per trade.
 - Maximum combined open risk: 1.0% of equity.
@@ -512,10 +512,49 @@ However, v0.7 is not promoted yet. The current frozen task is the v0.7 label-ove
 - 2026 remains untouched;
 - this audit is diagnostic only and emits no trading action or PnL conclusion.
 
-The audit passes only if the confirmed-event observer retains substantial discrimination on labels that
-were not yet resolved at T+15, with directionally useful performance in both 2024 and 2025. If most of the
-0.846 ROC-AUC disappears after resolved samples are removed, treat the v0.7 full-sample result as materially
-inflated by target overlap rather than as deployable evidence.
+The v0.7 label-overlap audit PASSED. Of 12,369 clear 2024-2025 samples, 6,078 (49.1%) were
+already resolved at T+15 and 6,291 remained unresolved. On the unresolved-only subset, without retraining,
+recalibration or threshold changes, confirmed v0.7 retained ROC-AUC 0.7065 and PR-AUC 0.2875 versus a
+16.25% reversal base rate (1.77x PR lift); the delayed control was ROC-AUC 0.5567 / PR-AUC 0.2031.
+The effect remained positive in both years: unresolved 2024 confirmed ROC-AUC 0.7193 / PR-AUC 0.2812
+versus control 0.5459 / 0.1740, and unresolved 2025 confirmed ROC-AUC 0.6948 / PR-AUC 0.2981 versus
+control 0.5723 / 0.2260. The full-sample 0.846 result was therefore partly inflated by easy already-resolved
+NOISE/CORRECTION cases, but the confirmation signal survives their complete removal.
+
+The current frozen task is the first and only untouched 2026 forward validation of v0.7:
+- freeze the model architecture, 15-minute confirmation window, feature set, labels, CatBoost parameters,
+  class weighting, Platt calibration method and threshold-selection rule exactly as developed on 2023-2025;
+- fixed forward window is 2026-01-01T00:00:00Z inclusive through 2026-09-30T00:00:00Z exclusive;
+  September 29, 2026 is the last included full UTC day;
+- forward input data must live in a separate directory and include warmup from 2025-11-01; never overwrite
+  the 2023-2025 development bundle;
+- build development confirmed-event samples only from the original 2023-2025 bundle;
+- fit/calibration/threshold selection for the 2026 run must remain entirely pre-2026 using the same
+  chronological split policy: model fit history, then 60-day Platt calibration, then later 60-day
+  threshold validation, with the existing 8-hour embargo;
+- 2026 samples may be used only for final scoring; no 2026 label may affect fitting, feature selection,
+  calibration, threshold selection or any parameter;
+- score both the delayed v0.6-feature control and the frozen confirmed v0.7 observer;
+- report both the full 2026 clear sample stream and the unresolved-at-T+15 subset using the same frozen
+  model/calibrator/thresholds;
+- unresolved-at-T+15 is the primary forward evidence because the overlap audit showed that already-resolved
+  cases inflate full-sample discrimination;
+- report monthly unresolved metrics only as regime-drift diagnostics; do not use monthly results to select
+  parameters or exclude months;
+- forward success gate is frozen before opening 2026:
+  * at least 100 unresolved clear forward samples;
+  * confirmed unresolved ROC-AUC >= 0.65;
+  * confirmed unresolved PR-AUC lift versus 2026 unresolved base rate >= 1.40x;
+  * confirmed unresolved ROC-AUC must exceed the delayed control;
+  * confirmed unresolved PR-AUC must exceed the delayed control;
+  * confirmed unresolved top-10% reversal-rate lift versus base >= 1.50x;
+- Brier/ECE are reported but are not pass/fail gates because the unresolved-only prevalence is intentionally
+  different and no forward recalibration is allowed;
+- if the one-shot 2026 gate fails, do not tune v0.7 and rerun the same 2026 window as if it were still
+  forward data. Any subsequent changes must treat 2026 as observed evidence, not untouched validation;
+- if it passes, freeze v0.7 as forward-validated observer evidence before any separate trading-policy
+  integration experiment;
+- this remains an observer test only: no BUY/SELL/HOLD/EXIT action and no PnL conclusion.
 
 Daily Income Gate is frozen before the first result. A strategy passes only if all conditions hold across the combined fixed test years:
 - at least 250 eligible session days;

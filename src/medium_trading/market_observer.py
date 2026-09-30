@@ -185,6 +185,8 @@ def extract_market_observer_samples(
     open_interest: tuple[OpenInterestPoint, ...],
     account_ratio: tuple[AccountRatioPoint, ...],
     funding: tuple[FundingPoint, ...],
+    research_start: datetime = RESEARCH_START,
+    research_end: datetime = RESEARCH_END,
 ) -> tuple[MarketObserverSample, ...]:
     """
     Extract market-only structural disturbance events.
@@ -194,6 +196,8 @@ def extract_market_observer_samples(
     """
     if not candles_5m:
         raise ValueError("market observer requires M5 candles")
+    if research_end <= research_start:
+        raise ValueError("market observer research_end must be after research_start")
     _require_contiguous(candles_5m)
 
     m15 = _aggregate(candles_5m, 15)
@@ -223,12 +227,12 @@ def extract_market_observer_samples(
 
     for index, candle in enumerate(candles_5m):
         event_time = candle.timestamp + timedelta(minutes=5)
-        if event_time < RESEARCH_START:
+        if event_time < research_start:
             continue
-        if event_time >= RESEARCH_END:
+        if event_time >= research_end:
             break
         if event_time + timedelta(hours=LABEL_HORIZON_HOURS) > min(
-            RESEARCH_END,
+            research_end,
             candles_5m[-1].timestamp + timedelta(minutes=5),
         ):
             break
