@@ -1,6 +1,7 @@
 from bisect import bisect_left
 from collections.abc import Iterable
 from datetime import timedelta
+from itertools import pairwise
 from statistics import mean
 
 from medium_trading.data.bybit_trade_flow import TradeFlowPoint
@@ -544,16 +545,18 @@ def _retest_state(
     if event_type != "BODY_BREAK":
         return False, False
 
+    happened = False
+    held = False
     for candle in confirmation:
         if trend_side == "BULL":
             touched = candle.high >= level - tolerance
-            held = touched and candle.close < level
+            candle_held = touched and candle.close < level
         else:
             touched = candle.low <= level + tolerance
-            held = touched and candle.close > level
-        if touched:
-            return True, held
-    return False, False
+            candle_held = touched and candle.close > level
+        happened = happened or touched
+        held = held or candle_held
+    return happened, held
 
 
 def _adverse_touch_distance(
@@ -570,7 +573,7 @@ def _adverse_touch_distance(
 def _efficiency(closes: list[float]) -> float:
     path = sum(
         abs(current - previous)
-        for previous, current in zip(closes, closes[1:], strict=True)
+        for previous, current in pairwise(closes)
     )
     return abs(closes[-1] - closes[0]) / path if path > 0 else 0.0
 
