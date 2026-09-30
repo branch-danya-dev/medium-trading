@@ -1,7 +1,7 @@
 from bisect import bisect_right
 from collections import Counter, defaultdict
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from math import inf, sqrt
 from random import Random
 from statistics import mean, median, stdev
@@ -35,6 +35,8 @@ RANDOM_SEED = 42
 
 MIN_ENTRY_TRADES = 150
 MIN_GROSS_PROFIT_FACTOR = 1.10
+MIN_MATCH_COVERAGE = 0.90
+MIN_AVERAGE_MATCHES_PER_TRADE = 5.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,7 +57,7 @@ class EntrySample:
 
 @dataclass(frozen=True, slots=True)
 class MatchedControl:
-    entry_time: object
+    entry_time: datetime
     actual_gross_r: float
     random_mean_gross_r: float
     random_mean_net_r: float
@@ -641,11 +643,17 @@ def _matched_summary(
     if not controls:
         return {
             "matched_trades": 0,
+            "requested_trades": requested_trades,
+            "coverage": 0.0,
+            "average_matches_per_trade": 0.0,
+            "fallback_matches": 0,
             "mean_actual_gross_r": 0.0,
             "mean_random_gross_r": 0.0,
+            "mean_random_net_r": 0.0,
             "mean_gross_edge_r": 0.0,
             "gross_edge_bootstrap_95pct": [0.0, 0.0],
-            "fallback_matches": 0,
+            "random_reached_1r_before_stop_rate": 0.0,
+            "random_reached_2r_before_stop_rate": 0.0,
         }
     actual = tuple(item.actual_gross_r for item in controls)
     random_gross = tuple(item.random_mean_gross_r for item in controls)
@@ -695,6 +703,13 @@ def _entry_gate(
     information_conditions = {
         "minimum_trades": int(candidate["trades"]) >= MIN_ENTRY_TRADES,
         "positive_gross_r": float(candidate["gross_r"]) > 0,
+        "matched_random_coverage_at_least_90pct": (
+            float(matched["coverage"]) >= MIN_MATCH_COVERAGE
+        ),
+        "matched_random_average_matches_at_least_5": (
+            float(matched["average_matches_per_trade"])
+            >= MIN_AVERAGE_MATCHES_PER_TRADE
+        ),
         "gross_profit_factor_at_least_1_10": (
             float(candidate["gross_profit_factor"])
             >= MIN_GROSS_PROFIT_FACTOR
@@ -741,6 +756,10 @@ def _entry_gate(
         "thresholds": {
             "minimum_trades": MIN_ENTRY_TRADES,
             "minimum_gross_profit_factor": MIN_GROSS_PROFIT_FACTOR,
+            "minimum_matched_random_coverage": MIN_MATCH_COVERAGE,
+            "minimum_average_matches_per_trade": (
+                MIN_AVERAGE_MATCHES_PER_TRADE
+            ),
             "positive_gross_years_required": 2,
         },
         "note": (
