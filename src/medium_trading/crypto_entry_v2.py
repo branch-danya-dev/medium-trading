@@ -1,6 +1,7 @@
 from bisect import bisect_right
 from collections import Counter, defaultdict
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
+from datetime import timedelta
 from math import inf, sqrt
 from random import Random
 from statistics import mean, median, stdev
@@ -137,8 +138,14 @@ def evaluate_btc_entry_strategy_v2(
 
     baseline_summary = _entry_summary(baseline_economic)
     candidate_summary = _entry_summary(candidate_economic)
-    baseline_summary["matched_random"] = _matched_summary(baseline_control)
-    candidate_summary["matched_random"] = _matched_summary(candidate_control)
+    baseline_summary["matched_random"] = _matched_summary(
+        baseline_control,
+        requested_trades=len(baseline_economic),
+    )
+    candidate_summary["matched_random"] = _matched_summary(
+        candidate_control,
+        requested_trades=len(candidate_economic),
+    )
     candidate_summary["entry_gate"] = _entry_gate(
         baseline=baseline_summary,
         candidate=candidate_summary,
@@ -434,10 +441,6 @@ def _matched_random_control(
     symbol: str,
     config: BacktestConfig,
 ) -> tuple[MatchedControl, ...]:
-    by_time = {
-        candle.timestamp: index
-        for index, candle in enumerate(candles_30m)
-    }
     candidate_pools = _random_candidate_pools(
         candles_30m=candles_30m,
         regime=regime,
@@ -547,12 +550,11 @@ def _random_candidate_pools(
         raise ValueError("unknown random-control regime")
 
     candles_4h = aggregate_candles(candles_30m, 240)
-    ends_4h = [candle.timestamp for candle in candles_4h]
-    ends_4h = [timestamp.replace() for timestamp in ends_4h]
     # aggregate_candles timestamps are bucket starts; the bar is known 4h later.
-    from datetime import timedelta
-
-    known_4h = [timestamp + timedelta(hours=4) for timestamp in ends_4h]
+    known_4h = [
+        candle.timestamp + timedelta(hours=4)
+        for candle in candles_4h
+    ]
     strategy = CryptoTrendLongV2Strategy()
     regime_cache: dict[int, bool] = {}
 
@@ -560,7 +562,10 @@ def _random_candidate_pools(
     fallback: dict[tuple[int, ...], list[int]] = defaultdict(list)
     last_entry_index = len(candles_30m) - BTC_REQUIRED_FUTURE_BARS
 
-    for index, candle in enumerate(candles_30m[:last_entry_index]):
+    for index in range(max(0, last_entry_index + 1)):
+        candle = candles_30m[index]
+        if not _has_contiguous_future(candles_30m, index):
+            continue
         if candle.timestamp < TRADE_START or candle.timestamp > TRADE_END:
             continue
         four_hour_count = bisect_right(known_4h, candle.timestamp)
@@ -630,6 +635,8 @@ def _h4_regime_ok(
 
 def _matched_summary(
     controls: tuple[MatchedControl, ...],
+    *,
+    requested_trades: int,
 ) -> dict[str, object]:
     if not controls:
         return {
@@ -645,7 +652,12 @@ def _matched_summary(
     edges = tuple(item.gross_edge_r for item in controls)
     return {
         "matched_trades": len(controls),
-        "coverage": len(controls) / len(actual) if actual else 0.0,
+        "requested_trades": requested_trades,
+        "coverage": (
+            len(controls) / requested_trades
+            if requested_trades
+            else 0.0
+        ),
         "average_matches_per_trade": mean(item.matches for item in controls),
         "fallback_matches": sum(item.fallback_used for item in controls),
         "mean_actual_gross_r": mean(actual),
@@ -751,10 +763,7 @@ def _path_diagnostics(
     if risk_distance <= 0:
         return 0.0, 0.0, False, False
 
-    deadline = candles_30m[entry_index].timestamp
-    from datetime import timedelta
-
-    deadline += timedelta(hours=24)
+    deadline = candles_30m[entry_index].timestamp + timedelta(hours=24)
     horizon: list[Candle] = []
     for candle in candles_30m[entry_index:]:
         if candle.timestamp >= deadline:
@@ -863,3 +872,24 @@ def _sample_payload(item: EntrySample) -> dict[str, object]:
         "reached_1r_before_stop": item.reached_1r_before_stop,
         "reached_2r_before_stop": item.reached_2r_before_stop,
     }
+
+
+
+def _has_contiguous_future(
+    candles_30m: tuple[Candle, ...],
+    entry_index: int,
+) -> bool:
+    end = entry_index + BTC_REQUIRED_FUTURE_BARS
+    if end > len(candles_30m):
+        return False
+    window = candles_30m[entry_index:end]
+    if len(window) != BTC_REQUIRED_FUTURE_BARS:
+        return False
+    return all(
+        current.timestamp - previous.timestamp == timedelta(minutes=30)
+        for previous, current in zip(
+            window,
+            window[1:],
+            strict=True,
+        )
+    )
