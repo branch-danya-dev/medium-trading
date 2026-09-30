@@ -118,14 +118,14 @@ RANDOM_FOREST_PARAMS = {
 
 class MarketObserverSample:
     __slots__ = (
+        "atr5",
+        "defended_level",
         "event_time",
-        "label_end_time",
-        "trend_side",
         "event_type",
         "features",
+        "label_end_time",
         "state_class",
-        "defended_level",
-        "atr5",
+        "trend_side",
     )
 
     def __init__(
@@ -158,8 +158,8 @@ class _Structure:
     __slots__ = (
         "defended_index",
         "defended_level",
-        "previous_defended",
         "opposite_level",
+        "previous_defended",
         "previous_opposite",
     )
 
@@ -378,7 +378,7 @@ def evaluate_market_observer_v04(
                 f"not enough clear {year} market-observer samples: "
                 f"{len(test)}; need at least 100"
             )
-        if set(sample.state_class for sample in train) != set(CLEAR_LABELS):
+        if {sample.state_class for sample in train} != set(CLEAR_LABELS):
             raise ValueError(f"pre-{year} training data does not contain all clear classes")
 
         train_x = [list(sample.features) for sample in train]
@@ -450,7 +450,7 @@ def evaluate_market_observer_v04(
     combined_test = tuple(
         sample
         for sample in all_samples
-        if FIRST_TEST_YEAR <= sample.event_time.year <= LAST_TEST_YEAR
+        if first_test_year <= sample.event_time.year <= last_test_year
     )
     cat_mean_importance = _mean_importance(catboost_importances)
     forest_mean_importance = _mean_importance(forest_importances)
@@ -660,9 +660,12 @@ def _market_label(
         first_correction is None or first_trend < first_correction
     ):
         return "NOISE"
-    if first_correction is not None and first_trend is not None:
-        if first_correction < first_trend:
-            return "CORRECTION"
+    if (
+        first_correction is not None
+        and first_trend is not None
+        and first_correction < first_trend
+    ):
+        return "CORRECTION"
 
     accepted = _accepted_structure(
         candles_5m=candles_5m,
