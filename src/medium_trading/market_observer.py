@@ -78,7 +78,7 @@ NUMERIC_FEATURES = (
     "defended_swing_weaker",
     "opposite_swing_weaker",
     "event_break_displacement_atr",
-    "event_volume_zscore",
+    "countertrend_volume_share_5",
     "oi_change_30m",
     "oi_change_2h",
     "oi_change_4h",
@@ -846,6 +846,15 @@ def _features(
         consecutive += 1
 
     event_break_displacement = adverse_close if event_type == "BODY_BREAK" else 0.0
+    recent5_volume = sum(item.volume for item in recent5)
+    countertrend_volume = sum(
+        item.volume
+        for item in recent5
+        if direction * (item.close - item.open) < 0
+    )
+    countertrend_volume_share = (
+        countertrend_volume / recent5_volume if recent5_volume > 0 else 0.0
+    )
 
     oi_now, oi_available = _latest_value(
         open_interest,
@@ -944,7 +953,7 @@ def _features(
         1.0 if defended_weaker else 0.0,
         1.0 if opposite_weaker else 0.0,
         event_break_displacement,
-        volume_z50,
+        countertrend_volume_share,
         oi_change_30m,
         oi_change_2h,
         oi_change_4h,
