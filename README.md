@@ -830,6 +830,66 @@ the number of structural exits that improve versus worsen the original outcome, 
 and RETEST_HELD, body-break resolution counts and SWEEP_RECLAIM follow-through. Do not add ML or tune the
 frozen structure thresholds before reading this deterministic result.
 
+v0.3 did not improve trade management. The native-M5 control matched source-M30 economics, while the
+structural EXIT policy moved the 407-candidate stream from +25.42R gross / -45.22R net / PF 0.843 to
++7.93R gross / -62.70R net / PF 0.658. Structural exits improved 191/292 cases but worsened 101/292,
+and those mistakes were large enough to produce -17.48R delta. The structure layer therefore remains
+diagnostic; BREAK_ACCEPTED and RETEST_HELD are not promoted to hard trading actions.
+
+## Market Observer v0.4
+
+v0.4 changes the task completely. ML no longer evaluates trades or position management. It observes
+BTCUSDT market state continuously and classifies whether a causal structural disturbance is noise,
+a recoverable correction or a real trend reversal.
+
+There are no trade inputs in this experiment: no entry, stop, target, current R, MFE/MAE, PnL, risk,
+fees or slippage. The observer uses only the existing 2023-2025 Bybit state bundle:
+- native M5 price/volume;
+- completed M15/M30/H1/H4 context derived causally from M5;
+- open interest;
+- long/short account ratio;
+- settled funding.
+
+Sampling is market-driven. A completed-H4 trend must first exist: BULL means close above rising EMA20,
+BEAR means close below falling EMA20. Confirmed M5 swings remain 2 bars left + 2 bars right. In a BULL
+trend the observer watches the latest confirmed swing low; in a BEAR trend it watches the latest confirmed
+swing high. The first causal disturbance of each defended swing becomes one sample:
+- SWEEP_RECLAIM: the level is pierced but the M5 close returns to the trend side;
+- BODY_BREAK: the M5 close finishes at least 0.10 ATR5 through the defended level.
+
+Features are normalized and market-only: multi-timeframe ATR-scaled returns, ATR14/ATR200,
+realized-volatility ratio, Kaufman efficiency, bar overlap, candle body/wicks, relative and z-scored
+volume, EMA distance/slope, RSI14 and RSI z-score, swing geometry and structural penetration,
+OI changes, price/OI interaction, account positioning and funding. Directional features are signed so
+positive always means with the prevailing H4 trend. CatBoost additionally receives trend side, event type,
+UTC session bucket and weekday as categorical features.
+
+The 8-hour labels are market outcomes rather than trade results:
+- NOISE: +0.75 ATR with-trend occurs before -0.75 ATR adverse;
+- CORRECTION: -0.75 ATR adverse occurs first, but +0.75 ATR with-trend later recovers inside 8 hours;
+- REAL_REVERSAL: structurally accepted damage extends at least -1.50 ATR against trend and the +0.75 ATR
+  recovery barrier is not reached inside 8 hours;
+- AMBIGUOUS: unresolved outcomes, reported but excluded from model scoring.
+
+The primary model is CatBoostClassifier (300 trees/iterations, depth 6, learning rate 0.05, L2 5).
+A fixed RandomForestClassifier (300 trees, depth 8, min leaf 20) is the benchmark. 2023 is training-only;
+2024 and 2025 are expanding walk-forward development folds. Every training label must finish before the
+test fold and an additional 8-hour embargo is applied. 2026 is untouched.
+
+Run:
+
+    medium-trading btc-market-observer-v0-4-evaluate `
+      --m5 "data/bybit/state/BTCUSDT_M5.csv" `
+      --open-interest "data/bybit/state/BTCUSDT_OPEN_INTEREST_30M.csv" `
+      --account-ratio "data/bybit/state/BTCUSDT_ACCOUNT_RATIO_30M.csv" `
+      --funding "data/bybit/state/BTCUSDT_FUNDING.csv" `
+      --json artifacts/bybit_btcusdt_market_observer_v0_4.json
+
+Judge the first result only as an observer-information test. Report per-class precision/recall/F1/lift,
+macro F1, REAL_REVERSAL PR-AUC/ROC-AUC/Brier/calibration, probability bands, class/event/trend balance,
+feature importance stability and CatBoost versus RandomForest consistency. v0.4 does not emit BUY/SELL/
+HOLD/EXIT decisions and must not be judged by trading PnL. Do not tune it from the first result.
+
 The legacy daily gate remains strict and conjunctive for the older daily-income studies: at least 250 eligible sessions, at least 300 trades, >=70%
 active-session rate, >=45% profitable active days, positive average net R/session, net PF >=1.15,
 2x-cost PF >1.00, at least 2 positive yearly folds, >=60% positive months, worst day no worse than -2R,
