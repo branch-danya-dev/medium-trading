@@ -876,3 +876,39 @@ def test_market_observer_v0_7_parser_requires_trade_flow(monkeypatch) -> None:
     assert args.trade_flow.endswith("BTCUSDT_TRADE_FLOW_M5.csv")
     assert not hasattr(args, "starting_equity")
     assert not hasattr(args, "risk")
+
+
+
+def test_market_observer_v0_7_overlap_audit_parser(monkeypatch) -> None:
+    captured = []
+
+    monkeypatch.setattr(
+        cli,
+        "_btc_market_observer_v0_7_overlap_audit",
+        captured.append,
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "medium-trading",
+            "btc-market-observer-v0-7-overlap-audit",
+            "--m5",
+            "data/bybit/state/BTCUSDT_M5.csv",
+            "--open-interest",
+            "data/bybit/state/BTCUSDT_OPEN_INTEREST_30M.csv",
+            "--account-ratio",
+            "data/bybit/state/BTCUSDT_ACCOUNT_RATIO_30M.csv",
+            "--funding",
+            "data/bybit/state/BTCUSDT_FUNDING.csv",
+            "--trade-flow",
+            "data/bybit/flow/BTCUSDT_TRADE_FLOW_M5.csv",
+        ],
+    )
+
+    cli.main()
+
+    args = captured[0]
+    assert args.trade_flow.endswith("BTCUSDT_TRADE_FLOW_M5.csv")
+    assert not hasattr(args, "starting_equity")
+    assert not hasattr(args, "risk")
