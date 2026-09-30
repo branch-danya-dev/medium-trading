@@ -2,6 +2,7 @@ from bisect import bisect_right
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from itertools import pairwise
 from math import inf, sqrt
 from random import Random
 from statistics import mean, median, stdev
@@ -24,8 +25,8 @@ from medium_trading.crypto_long_baseline import (
 from medium_trading.domain import Candle, Side, Signal
 from medium_trading.strategy.base import Strategy
 from medium_trading.strategy.crypto_trend_long import (
-    CryptoTrendLongV11Strategy,
     CryptoTrendLongV2Strategy,
+    CryptoTrendLongV11Strategy,
 )
 
 ECONOMIC_MIN_TARGET_TO_COST = 8.0
@@ -616,11 +617,7 @@ def _h4_regime_ok(
     recent_ema = ema[-(bars + 1):]
     if not all(
         current_ema > previous_ema
-        for previous_ema, current_ema in zip(
-            recent_ema,
-            recent_ema[1:],
-            strict=True,
-        )
+        for previous_ema, current_ema in pairwise(recent_ema)
     ):
         return False
     if not all(
@@ -906,9 +903,5 @@ def _has_contiguous_future(
         return False
     return all(
         current.timestamp - previous.timestamp == timedelta(minutes=30)
-        for previous, current in zip(
-            window,
-            window[1:],
-            strict=True,
-        )
+        for previous, current in pairwise(window)
     )
