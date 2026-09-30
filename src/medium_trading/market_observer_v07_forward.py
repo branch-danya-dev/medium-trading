@@ -25,6 +25,11 @@ FORWARD_END = datetime(2026, 9, 30, tzinfo=UTC)
 FORWARD_WARMUP_START = date(2025, 11, 1)
 FORWARD_LAST_FULL_DAY = date(2026, 9, 29)
 
+MIN_UNRESOLVED_SAMPLES = 100
+MIN_UNRESOLVED_ROC_AUC = 0.65
+MIN_UNRESOLVED_PR_LIFT = 1.40
+MIN_UNRESOLVED_TOP10_LIFT = 1.50
+
 
 def evaluate_market_observer_v07_forward(
     *,
@@ -181,6 +186,12 @@ def evaluate_market_observer_v07_forward(
         metrics,
     )
 
+    forward_gate = _forward_gate(
+        samples=len(unresolved_indexes),
+        control=unresolved_control,
+        confirmed=unresolved_confirmed,
+    )
+
     return {
         "research_scope": {
             "market": "Bybit BTCUSDT linear perpetual",
@@ -237,6 +248,7 @@ def evaluate_market_observer_v07_forward(
                     unresolved_confirmed,
                 ),
             },
+            "frozen_gate": forward_gate,
             "confirmed_top_features": _top_features_named(
                 confirmed["feature_importance"],
                 FEATURE_NAMES,
@@ -315,3 +327,53 @@ def _monthly_metrics(
             ),
         }
     return payload
+
+
+
+def _forward_gate(
+    *,
+    samples: int,
+    control: dict[str, object],
+    confirmed: dict[str, object],
+) -> dict[str, object]:
+    confirmed_top10 = confirmed["top_fraction_lift"]["top_10pct"][
+        "lift_vs_base"
+    ]
+    conditions = {
+        "minimum_unresolved_samples": samples >= MIN_UNRESOLVED_SAMPLES,
+        "minimum_confirmed_roc_auc": (
+            float(confirmed["roc_auc"]) >= MIN_UNRESOLVED_ROC_AUC
+        ),
+        "minimum_confirmed_pr_auc_lift": (
+            float(confirmed["pr_auc_lift_vs_base"])
+            >= MIN_UNRESOLVED_PR_LIFT
+        ),
+        "confirmed_roc_auc_exceeds_control": (
+            float(confirmed["roc_auc"]) > float(control["roc_auc"])
+        ),
+        "confirmed_pr_auc_exceeds_control": (
+            float(confirmed["pr_auc"]) > float(control["pr_auc"])
+        ),
+        "minimum_confirmed_top10_lift": (
+            float(confirmed_top10) >= MIN_UNRESOLVED_TOP10_LIFT
+        ),
+    }
+    return {
+        "passes": all(conditions.values()),
+        "conditions": conditions,
+        "thresholds": {
+            "minimum_unresolved_samples": MIN_UNRESOLVED_SAMPLES,
+            "minimum_confirmed_roc_auc": MIN_UNRESOLVED_ROC_AUC,
+            "minimum_confirmed_pr_auc_lift": MIN_UNRESOLVED_PR_LIFT,
+            "minimum_confirmed_top10_lift": MIN_UNRESOLVED_TOP10_LIFT,
+        },
+        "observed": {
+            "unresolved_samples": samples,
+            "confirmed_roc_auc": confirmed["roc_auc"],
+            "confirmed_pr_auc": confirmed["pr_auc"],
+            "confirmed_pr_auc_lift": confirmed["pr_auc_lift_vs_base"],
+            "control_roc_auc": control["roc_auc"],
+            "control_pr_auc": control["pr_auc"],
+            "confirmed_top10_lift": confirmed_top10,
+        },
+    }
