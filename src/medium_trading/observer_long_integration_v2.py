@@ -15,7 +15,6 @@ from medium_trading.observer_long_integration import (
 from medium_trading.observer_policy import ObserverSnapshot
 from medium_trading.observer_policy_v2 import LongObserverPolicyV2
 
-
 POLICY_VERSION = "long-observer-policy-v2"
 
 
