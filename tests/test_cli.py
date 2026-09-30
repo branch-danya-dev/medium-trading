@@ -704,3 +704,40 @@ def test_market_structure_events_v0_3_parser_uses_frozen_defaults(monkeypatch) -
     assert args.slippage_bps_per_side == 2.0
     assert args.starting_equity == 10_000.0
     assert args.risk == 0.005
+
+
+
+def test_market_observer_v0_4_parser_uses_market_only_inputs(monkeypatch) -> None:
+    captured = []
+
+    monkeypatch.setattr(
+        cli,
+        "_btc_market_observer_v0_4_evaluate",
+        captured.append,
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "medium-trading",
+            "btc-market-observer-v0-4-evaluate",
+            "--m5",
+            "data/bybit/state/BTCUSDT_M5.csv",
+            "--open-interest",
+            "data/bybit/state/BTCUSDT_OPEN_INTEREST_30M.csv",
+            "--account-ratio",
+            "data/bybit/state/BTCUSDT_ACCOUNT_RATIO_30M.csv",
+            "--funding",
+            "data/bybit/state/BTCUSDT_FUNDING.csv",
+        ],
+    )
+
+    cli.main()
+
+    args = captured[0]
+    assert args.m5.endswith("BTCUSDT_M5.csv")
+    assert args.open_interest.endswith("BTCUSDT_OPEN_INTEREST_30M.csv")
+    assert args.account_ratio.endswith("BTCUSDT_ACCOUNT_RATIO_30M.csv")
+    assert args.funding.endswith("BTCUSDT_FUNDING.csv")
+    assert not hasattr(args, "starting_equity")
+    assert not hasattr(args, "risk")
