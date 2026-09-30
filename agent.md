@@ -13,7 +13,7 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 - Legacy FX universe: EUR/USD, GBP/USD, USD/JPY, AUD/USD plus four external FX pairs used in validation.
 - Current market: Crypto, starting with BTC/USD.
 - Core data timeframe for the current candidate: 30m.
-- Current research candidate: Bybit BTCUSDT Market Structure Model v0.2 for explicit structure-based noise-vs-reversal feasibility.
+- Current research candidate: Bybit BTCUSDT Market Structure Event Model v0.3 for deterministic causal event-driven trade-management feasibility.
 - Default project starting equity model: USD 1,000. The BTC Trend LONG v1 diagnostic baseline uses USD 10,000 so R-to-USD interpretation is explicit.
 - Default risk: 0.5% of equity per trade.
 - Maximum combined open risk: 1.0% of equity.
@@ -254,6 +254,50 @@ Market Structure Model v0.2 is frozen as follows:
 - v0.2 remains diagnostic only and does not yet replace the hard stop or issue HOLD/WAIT/EXIT decisions.
 
 Do not tune v0.2 after the first result. First determine whether explicit swing-break/reclaim/retest/volume structure provides stable discrimination in both development folds.
+
+Market Structure Model v0.2 FAILED as an ML discriminator. Combined 2024-2025 precision was 53.39%
+against a 50.44% reversal base rate, precision lift was 1.058x, recall was 49.45%, ROC AUC was 0.524
+and Brier score was 0.289. The weak lift was present in both development folds and deteriorated from
+1.076x in 2024 to 1.035x in 2025. Do not tune the v0.2 threshold, boosting parameters or inspected
+feature set. The periodic stress-snapshot forecasting formulation is REJECTED.
+
+The current frozen task is Market Structure Event Model v0.3. It tests the structural rules directly
+before any further ML attempt:
+- ML is OFF;
+- use the same economic-pass Trend LONG v1.1 candidate stream;
+- reuse native Bybit M30 and M5 history from 2023-2025 only; 2026 remains untouched;
+- confirmed M5 swing remains 2 bars left + 2 bars right and is usable only after both right bars close;
+- the most recent causally confirmed swing low is the active LONG structural level;
+- structural body break remains an M5 close at least 0.10 ATR5 below that level;
+- acceptance remains at least 3 closes below the level inside the 5-bar window, counting the break bar;
+- retest tolerance remains 0.15 ATR5 and a held retest requires the retest candle to close below the level;
+- fast reclaim remains 3 M5 bars;
+- SWEEP_RECLAIM -> HOLD;
+- BODY_BREAK_UNCONFIRMED -> WAIT;
+- BREAK_RECLAIMED -> HOLD and cancel WAIT;
+- BREAK_ACCEPTED -> EXIT;
+- RETEST_HELD -> EXIT;
+- when BREAK_ACCEPTED and RETEST_HELD become true on the same closed M5 candle, RETEST_HELD is the
+  attributed exit trigger while both observable events may be reported;
+- structural EXIT executes at the next M5 open. Never use the confirming close as the fill;
+- hard stop and 2R target remain active while waiting and take conservative precedence if touched before
+  the structural exit fill;
+- maximum holding remains 24 real hours;
+- the candidate stream is fixed. Earlier exits do not create replacement entries;
+- ordinary execution costs remain 5.5 bps taker fee + 2.0 bps slippage per side;
+- report ordinary and 2x-cost results;
+- use native M5 for both a control original-path re-simulation and the managed path. Also retain the source
+  M30 result so any M5-resolution effect is visible separately from event-management delta;
+- primary comparison is managed M5 versus original M5, not managed M5 versus source M30;
+- report gross/net R, PF, average net R/trade, max drawdown, yearly 2023/2024/2025 results, event counts,
+  structural-exit improved/worsened counts, average delta-R, delta-R by BREAK_ACCEPTED and RETEST_HELD,
+  BODY_BREAK_UNCONFIRMED outcomes, and SWEEP_RECLAIM follow-through to +0.5R/+1R/2R;
+- do not add ML, tune structure thresholds or change the underlying entry strategy before reading v0.3.
+
+v0.3 passes its feasibility purpose only if the deterministic causal management improves the original
+M5 outcome in a stable, economically meaningful way rather than merely benefiting from M5 execution
+resolution. If it helps, a later ML task may be considered only for the unresolved BODY_BREAK_UNCONFIRMED
+gray zone. If it does not help, do not train another classifier on the same event formulation.
 
 Daily Income Gate is frozen before the first result. A strategy passes only if all conditions hold across the combined fixed test years:
 - at least 250 eligible session days;
