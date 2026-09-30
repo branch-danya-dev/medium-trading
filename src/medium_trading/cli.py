@@ -48,6 +48,10 @@ from medium_trading.data.bybit_state_history import (
     save_funding,
     save_open_interest,
 )
+from medium_trading.data.bybit_trade_flow import (
+    download_trade_flow_range,
+    load_trade_flow,
+)
 from medium_trading.data.dukascopy_download import download_m30
 from medium_trading.data.oanda import OandaHistoryClient
 from medium_trading.direct_ml import (
@@ -62,6 +66,10 @@ from medium_trading.market_observer import (
     extract_market_observer_samples,
 )
 from medium_trading.market_observer_v05 import evaluate_market_observer_v05
+from medium_trading.market_observer_v06 import (
+    augment_market_observer_samples_with_trade_flow,
+    evaluate_market_observer_v06,
+)
 from medium_trading.market_state_model import (
     evaluate_market_state_v01,
     extract_market_state_samples,
@@ -155,6 +163,17 @@ def main() -> None:
     bybit_state.add_argument("--to", dest="end", required=True)
     bybit_state.add_argument("--base-url", default="https://api.bybit.com")
     bybit_state.add_argument("--output-dir", default="data/bybit/state")
+
+    bybit_trade_flow = subparsers.add_parser("download-bybit-trade-flow")
+    bybit_trade_flow.add_argument("--symbol", default="BTCUSDT")
+    bybit_trade_flow.add_argument("--from", dest="start", required=True)
+    bybit_trade_flow.add_argument("--to", dest="end", required=True)
+    bybit_trade_flow.add_argument(
+        "--base-url",
+        default="https://public.bybit.com/trading",
+    )
+    bybit_trade_flow.add_argument("--workers", type=int, default=2)
+    bybit_trade_flow.add_argument("--output-dir", default="data/bybit/flow")
 
     dukascopy_import = subparsers.add_parser("import-dukascopy")
     dukascopy_import.add_argument("--symbol", required=True, help="Example: EUR/USD")
@@ -504,6 +523,16 @@ def main() -> None:
     market_observer_v05.add_argument("--funding", required=True)
     market_observer_v05.add_argument("--json", dest="json_output")
 
+    market_observer_v06 = subparsers.add_parser(
+        "btc-market-observer-v0-6-evaluate"
+    )
+    market_observer_v06.add_argument("--m5", required=True)
+    market_observer_v06.add_argument("--open-interest", required=True)
+    market_observer_v06.add_argument("--account-ratio", required=True)
+    market_observer_v06.add_argument("--funding", required=True)
+    market_observer_v06.add_argument("--trade-flow", required=True)
+    market_observer_v06.add_argument("--json", dest="json_output")
+
     args = parser.parse_args()
     if args.command == "download-dukascopy":
         _download_dukascopy(args)
@@ -511,6 +540,8 @@ def main() -> None:
         _download_bybit(args)
     elif args.command == "download-bybit-state":
         _download_bybit_state(args)
+    elif args.command == "download-bybit-trade-flow":
+        _download_bybit_trade_flow(args)
     elif args.command == "import-dukascopy":
         _import_dukascopy(args)
     elif args.command == "download-oanda":
@@ -551,6 +582,8 @@ def main() -> None:
         _btc_market_observer_v0_4_evaluate(args)
     elif args.command == "btc-market-observer-v0-5-evaluate":
         _btc_market_observer_v0_5_evaluate(args)
+    elif args.command == "btc-market-observer-v0-6-evaluate":
+        _btc_market_observer_v0_6_evaluate(args)
 
 
 def _download_dukascopy(args: argparse.Namespace) -> None:
@@ -681,6 +714,33 @@ def _download_bybit_state(args: argparse.Namespace) -> None:
     funding_path = output_dir / f"{symbol}_FUNDING.csv"
     save_funding(funding_path, funding)
     print(f"saved {len(funding)} funding points to {funding_path}")
+
+
+def _download_bybit_trade_flow(args: argparse.Namespace) -> None:
+    start = date.fromisoformat(args.start)
+    end = date.fromisoformat(args.end)
+    output_dir = Path(args.output_dir)
+
+    print(
+        f"downloading Bybit public trade flow {args.symbol}: "
+        f"{start} -> {end}"
+    )
+
+    def progress(done: int, total: int) -> None:
+        if done == total or done % 10 == 0:
+            print(f"  {done}/{total} archive days aggregated")
+
+    points = download_trade_flow_range(
+        symbol=args.symbol,
+        start=start,
+        end=end,
+        output_dir=output_dir,
+        base_url=args.base_url,
+        workers=args.workers,
+        progress=progress,
+    )
+    output = output_dir / f"{args.symbol.upper()}_TRADE_FLOW_M5.csv"
+    print(f"saved {len(points)} M5 trade-flow rows to {output}")
 
 
 def _import_dukascopy(args: argparse.Namespace) -> None:
@@ -1541,6 +1601,68 @@ def _btc_market_observer_v0_5_evaluate(args: argparse.Namespace) -> None:
             encoding="utf-8",
         )
         print(f"wrote Market Observer v0.5 report to {output}")
+
+
+def _btc_market_observer_v0_6_evaluate(args: argparse.Namespace) -> None:
+    candles_5m = load_candles(Path(args.m5))
+    open_interest = load_open_interest(Path(args.open_interest))
+    account_ratio = load_account_ratio(Path(args.account_ratio))
+    funding = load_funding(Path(args.funding))
+    trade_flow = load_trade_flow(Path(args.trade_flow))
+
+    base_samples = extract_market_observer_samples(
+        candles_5m=candles_5m,
+        open_interest=open_interest,
+        account_ratio=account_ratio,
+        funding=funding,
+    )
+    samples = augment_market_observer_samples_with_trade_flow(
+        base_samples,
+        trade_flow,
+    )
+    payload = evaluate_market_observer_v06(samples)
+    combined = payload["combined"]
+    baseline = combined["baseline_v0_5_reversal"]["ranking_and_calibration"]
+    enhanced = combined["flow_enhanced_reversal"]["ranking_and_calibration"]
+    delta = combined["delta"]
+
+    print("BTCUSDT Market Observer v0.6")
+    print(
+        f"samples={combined['test_samples']} "
+        f"clear={combined['clear_samples']} "
+        f"excluded={combined['excluded_samples']} "
+        f"states={combined['state_distribution']}"
+    )
+    print(
+        f"baseline ROC_AUC={baseline['roc_auc']:.3f} "
+        f"PR_AUC={baseline['pr_auc']:.3f} "
+        f"PR_lift={baseline['pr_auc_lift_vs_base']:.2f}x"
+    )
+    print(
+        f"trade-flow ROC_AUC={enhanced['roc_auc']:.3f} "
+        f"PR_AUC={enhanced['pr_auc']:.3f} "
+        f"PR_lift={enhanced['pr_auc_lift_vs_base']:.2f}x "
+        f"Brier={enhanced['brier_score']:.3f} "
+        f"ECE={enhanced['expected_calibration_error']:.3f}"
+    )
+    print(
+        f"delta ROC_AUC={delta['roc_auc']:+.3f} "
+        f"PR_AUC={delta['pr_auc']:+.3f} "
+        f"PR_lift={delta['pr_auc_lift_vs_base']:+.2f}x"
+    )
+    print(
+        "flow feature importance="
+        f"{combined['flow_enhanced_reversal']['flow_feature_importance']}"
+    )
+
+    if args.json_output:
+        output = Path(args.json_output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(
+            json.dumps(payload, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        print(f"wrote Market Observer v0.6 report to {output}")
 
 
 def _strategy_from_name(name: str) -> Strategy:
