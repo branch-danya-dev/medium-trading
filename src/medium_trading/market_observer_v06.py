@@ -6,12 +6,14 @@ from statistics import mean
 from medium_trading.data.bybit_trade_flow import TradeFlowPoint
 from medium_trading.market_observer import (
     CAT_FEATURE_INDICES,
-    FEATURE_NAMES as BASE_FEATURE_NAMES,
     MarketObserverSample,
     _event_distribution,
     _state_distribution,
     _top_features,
     _trend_distribution,
+)
+from medium_trading.market_observer import (
+    FEATURE_NAMES as BASE_FEATURE_NAMES,
 )
 from medium_trading.market_observer_v05 import (
     REVERSAL_PARAMS,
