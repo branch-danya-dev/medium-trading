@@ -108,10 +108,16 @@ from medium_trading.ml_filter import forward_evaluation_payload as ml_forward_pa
 from medium_trading.observer_long_integration import (
     evaluate_long_observer_policy_v1,
 )
+from medium_trading.observer_long_forward_2026 import (
+    evaluate_long_observer_policy_v2_forward_2026,
+)
 from medium_trading.observer_long_integration_v2 import (
     evaluate_long_observer_policy_v2,
 )
-from medium_trading.observer_runtime import build_v07_walk_forward_snapshots
+from medium_trading.observer_runtime import (
+    build_v07_2026_forward_snapshots,
+    build_v07_walk_forward_snapshots,
+)
 from medium_trading.strategy import (
     CryptoDailyVolatilityExpansionStrategy,
     CryptoIntradayMomentumContinuationStrategy,
@@ -719,6 +725,88 @@ def main() -> None:
     observer_long_policy_v2.add_argument("--risk", type=float, default=0.005)
     observer_long_policy_v2.add_argument("--json", dest="json_output")
 
+    observer_long_policy_v2_forward = subparsers.add_parser(
+        "btc-observer-long-policy-v2-forward-2026-evaluate"
+    )
+    observer_long_policy_v2_forward.add_argument(
+        "--dev-m5",
+        default="data/bybit/state/BTCUSDT_M5.csv",
+    )
+    observer_long_policy_v2_forward.add_argument(
+        "--dev-open-interest",
+        default="data/bybit/state/BTCUSDT_OPEN_INTEREST_30M.csv",
+    )
+    observer_long_policy_v2_forward.add_argument(
+        "--dev-account-ratio",
+        default="data/bybit/state/BTCUSDT_ACCOUNT_RATIO_30M.csv",
+    )
+    observer_long_policy_v2_forward.add_argument(
+        "--dev-funding",
+        default="data/bybit/state/BTCUSDT_FUNDING.csv",
+    )
+    observer_long_policy_v2_forward.add_argument(
+        "--dev-trade-flow",
+        default="data/bybit/flow/BTCUSDT_TRADE_FLOW_M5.csv",
+    )
+    observer_long_policy_v2_forward.add_argument(
+        "--forward-m30",
+        default="data/bybit/forward2026/BTCUSDT_M30.csv",
+    )
+    observer_long_policy_v2_forward.add_argument(
+        "--forward-m5",
+        default="data/bybit/forward2026/state/BTCUSDT_M5.csv",
+    )
+    observer_long_policy_v2_forward.add_argument(
+        "--forward-open-interest",
+        default=(
+            "data/bybit/forward2026/state/"
+            "BTCUSDT_OPEN_INTEREST_30M.csv"
+        ),
+    )
+    observer_long_policy_v2_forward.add_argument(
+        "--forward-account-ratio",
+        default=(
+            "data/bybit/forward2026/state/"
+            "BTCUSDT_ACCOUNT_RATIO_30M.csv"
+        ),
+    )
+    observer_long_policy_v2_forward.add_argument(
+        "--forward-funding",
+        default="data/bybit/forward2026/state/BTCUSDT_FUNDING.csv",
+    )
+    observer_long_policy_v2_forward.add_argument(
+        "--forward-trade-flow",
+        default=(
+            "data/bybit/forward2026/flow/"
+            "BTCUSDT_TRADE_FLOW_M5.csv"
+        ),
+    )
+    observer_long_policy_v2_forward.add_argument("--symbol", default="BTCUSDT")
+    observer_long_policy_v2_forward.add_argument(
+        "--fee-bps-per-side",
+        type=float,
+        default=5.5,
+    )
+    observer_long_policy_v2_forward.add_argument(
+        "--slippage-bps-per-side",
+        type=float,
+        default=2.0,
+    )
+    observer_long_policy_v2_forward.add_argument(
+        "--starting-equity",
+        type=float,
+        default=1_000.0,
+    )
+    observer_long_policy_v2_forward.add_argument(
+        "--risk",
+        type=float,
+        default=0.005,
+    )
+    observer_long_policy_v2_forward.add_argument(
+        "--json",
+        dest="json_output",
+    )
+
     args = parser.parse_args()
     if args.command == "download-dukascopy":
         _download_dukascopy(args)
@@ -780,6 +868,8 @@ def main() -> None:
         _btc_observer_long_policy_v1_evaluate(args)
     elif args.command == "btc-observer-long-policy-v2-evaluate":
         _btc_observer_long_policy_v2_evaluate(args)
+    elif args.command == "btc-observer-long-policy-v2-forward-2026-evaluate":
+        _btc_observer_long_policy_v2_forward_2026_evaluate(args)
 
 
 def _download_dukascopy(args: argparse.Namespace) -> None:
@@ -2291,6 +2381,128 @@ def _btc_observer_long_policy_v2_evaluate(
             encoding="utf-8",
         )
         print(f"wrote Observer -> LONG Policy v2 report to {output}")
+
+
+def _btc_observer_long_policy_v2_forward_2026_evaluate(
+    args: argparse.Namespace,
+) -> None:
+    dev_candles = load_candles(Path(args.dev_m5))
+    dev_open_interest = load_open_interest(Path(args.dev_open_interest))
+    dev_account_ratio = load_account_ratio(Path(args.dev_account_ratio))
+    dev_funding = load_funding(Path(args.dev_funding))
+    dev_trade_flow = load_trade_flow(Path(args.dev_trade_flow))
+
+    dev_base = extract_market_observer_samples(
+        candles_5m=dev_candles,
+        open_interest=dev_open_interest,
+        account_ratio=dev_account_ratio,
+        funding=dev_funding,
+    )
+    dev_flow = augment_market_observer_samples_with_trade_flow(
+        dev_base,
+        dev_trade_flow,
+    )
+    development = build_confirmed_observer_samples(
+        samples=dev_flow,
+        candles_5m=dev_candles,
+        trade_flow=dev_trade_flow,
+    )
+
+    forward_candles_30m = load_candles(Path(args.forward_m30))
+    forward_candles_5m = load_candles(Path(args.forward_m5))
+    forward_open_interest = load_open_interest(
+        Path(args.forward_open_interest)
+    )
+    forward_account_ratio = load_account_ratio(
+        Path(args.forward_account_ratio)
+    )
+    forward_funding = load_funding(Path(args.forward_funding))
+    forward_trade_flow = load_trade_flow(Path(args.forward_trade_flow))
+
+    forward_base = extract_market_observer_samples(
+        candles_5m=forward_candles_5m,
+        open_interest=forward_open_interest,
+        account_ratio=forward_account_ratio,
+        funding=forward_funding,
+        research_start=FORWARD_START,
+        research_end=FORWARD_END,
+    )
+    forward_flow = augment_market_observer_samples_with_trade_flow(
+        forward_base,
+        forward_trade_flow,
+    )
+    forward = build_confirmed_observer_samples(
+        samples=forward_flow,
+        candles_5m=forward_candles_5m,
+        trade_flow=forward_trade_flow,
+    )
+    snapshots = build_v07_2026_forward_snapshots(
+        development_samples=development,
+        forward_samples=forward,
+    )
+
+    payload = evaluate_long_observer_policy_v2_forward_2026(
+        candles_30m=forward_candles_30m,
+        candles_5m=forward_candles_5m,
+        snapshots=snapshots,
+        symbol=args.symbol,
+        fee_bps_per_side=args.fee_bps_per_side,
+        slippage_bps_per_side=args.slippage_bps_per_side,
+        starting_equity=args.starting_equity,
+        risk_fraction=args.risk,
+    )
+    combined = payload["combined"]
+    baseline = combined["baseline_m5"]
+    managed = combined["observer_managed_m5"]
+    managed_2x = combined["observer_managed_m5_2x_costs"]
+    diagnostics = combined["policy_diagnostics"]
+    equity = combined["equity"]
+    gate = combined["forward_trading_gate"]
+
+    print("BTCUSDT frozen Bot + Observer v0.7 + Policy v2 — 2026")
+    print(
+        f"trades={managed['trades']} "
+        f"baseline_net={baseline['net_r']:.2f}R "
+        f"managed_net={managed['net_r']:.2f}R "
+        f"delta={combined['delta_net_r']:+.2f}R"
+    )
+    print(
+        f"baseline_PF={baseline['profit_factor']:.3f} "
+        f"managed_PF={managed['profit_factor']:.3f} "
+        f"baseline_DD={baseline['max_drawdown']:.1%} "
+        f"managed_DD={managed['max_drawdown']:.1%}"
+    )
+    print(
+        f"starting_equity=${args.starting_equity:.2f} "
+        f"baseline_final=${equity['baseline_final_equity_usd']:.2f} "
+        f"managed_final=${equity['managed_final_equity_usd']:.2f}"
+    )
+    print(
+        f"2x_cost_net={managed_2x['net_r']:.2f}R "
+        f"2x_cost_PF={managed_2x['profit_factor']:.3f} "
+        f"2x_cost_final="
+        f"${equity['managed_2x_cost_final_equity_usd']:.2f}"
+    )
+    print(
+        f"warnings={diagnostics['warning_long_decisions']} "
+        f"confirmed_exits={diagnostics['observer_exits']} "
+        f"exit_value={diagnostics['observer_exit_total_delta_net_r']:+.2f}R "
+        f"premature_targets="
+        f"{diagnostics['premature_exits_before_baseline_target']}"
+    )
+    print(
+        f"forward trading gate={'PASS' if gate['passes'] else 'FAIL'} "
+        f"conditions={gate['conditions']}"
+    )
+
+    if args.json_output:
+        output = Path(args.json_output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(
+            json.dumps(payload, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        print(f"wrote frozen 2026 bot+observer trading report to {output}")
 
 
 def _strategy_from_name(name: str) -> Strategy:
