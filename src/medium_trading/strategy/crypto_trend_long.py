@@ -1,4 +1,5 @@
 from dataclasses import replace
+from itertools import pairwise
 
 from medium_trading.domain import Candle, Side, Signal, StrategyContext
 
@@ -149,11 +150,7 @@ class CryptoTrendLongV2Strategy(CryptoTrendLongV11Strategy):
             return None
         if not all(
             current > previous
-            for previous, current in zip(
-                recent_ema,
-                recent_ema[1:],
-                strict=True,
-            )
+            for previous, current in pairwise(recent_ema)
         ):
             return None
 
