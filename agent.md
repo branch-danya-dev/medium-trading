@@ -13,7 +13,7 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 - Legacy FX universe: EUR/USD, GBP/USD, USD/JPY, AUD/USD plus four external FX pairs used in validation.
 - Current market: Crypto, starting with BTC/USD.
 - Core data timeframe for the current candidate: native M5 with completed M15/M30/H1/H4 context.
-- Current research candidate: frozen Bybit BTCUSDT Market Observer v0.7 one-shot 2026 forward validation.
+- Current research candidate: Observer -> LONG Trading Policy v1 using frozen forward-validated Market Observer v0.7.
 - Default project starting equity model: USD 1,000. The BTC Trend LONG v1 diagnostic baseline uses USD 10,000 so R-to-USD interpretation is explicit.
 - Default risk: 0.5% of equity per trade.
 - Maximum combined open risk: 1.0% of equity.
@@ -521,40 +521,56 @@ versus control 0.5459 / 0.1740, and unresolved 2025 confirmed ROC-AUC 0.6948 / P
 control 0.5723 / 0.2260. The full-sample 0.846 result was therefore partly inflated by easy already-resolved
 NOISE/CORRECTION cases, but the confirmation signal survives their complete removal.
 
-The current frozen task is the first and only untouched 2026 forward validation of v0.7:
-- freeze the model architecture, 15-minute confirmation window, feature set, labels, CatBoost parameters,
-  class weighting, Platt calibration method and threshold-selection rule exactly as developed on 2023-2025;
-- fixed forward window is 2026-01-01T00:00:00Z inclusive through 2026-09-30T00:00:00Z exclusive;
-  September 29, 2026 is the last included full UTC day;
-- forward input data must live in a separate directory and include warmup from 2025-11-01; never overwrite
-  the 2023-2025 development bundle;
-- build development confirmed-event samples only from the original 2023-2025 bundle;
-- fit/calibration/threshold selection for the 2026 run must remain entirely pre-2026 using the same
-  chronological split policy: model fit history, then 60-day Platt calibration, then later 60-day
-  threshold validation, with the existing 8-hour embargo;
-- 2026 samples may be used only for final scoring; no 2026 label may affect fitting, feature selection,
-  calibration, threshold selection or any parameter;
-- score both the delayed v0.6-feature control and the frozen confirmed v0.7 observer;
-- report both the full 2026 clear sample stream and the unresolved-at-T+15 subset using the same frozen
-  model/calibrator/thresholds;
-- unresolved-at-T+15 is the primary forward evidence because the overlap audit showed that already-resolved
-  cases inflate full-sample discrimination;
-- report monthly unresolved metrics only as regime-drift diagnostics; do not use monthly results to select
-  parameters or exclude months;
-- forward success gate is frozen before opening 2026:
-  * at least 100 unresolved clear forward samples;
-  * confirmed unresolved ROC-AUC >= 0.65;
-  * confirmed unresolved PR-AUC lift versus 2026 unresolved base rate >= 1.40x;
-  * confirmed unresolved ROC-AUC must exceed the delayed control;
-  * confirmed unresolved PR-AUC must exceed the delayed control;
-  * confirmed unresolved top-10% reversal-rate lift versus base >= 1.50x;
-- Brier/ECE are reported but are not pass/fail gates because the unresolved-only prevalence is intentionally
-  different and no forward recalibration is allowed;
-- if the one-shot 2026 gate fails, do not tune v0.7 and rerun the same 2026 window as if it were still
-  forward data. Any subsequent changes must treat 2026 as observed evidence, not untouched validation;
-- if it passes, freeze v0.7 as forward-validated observer evidence before any separate trading-policy
-  integration experiment;
-- this remains an observer test only: no BUY/SELL/HOLD/EXIT action and no PnL conclusion.
+The one-shot untouched 2026 forward validation PASSED. On 2,379 unresolved-at-T+15 samples,
+frozen v0.7 achieved ROC-AUC 0.7278 and PR-AUC 0.3015 versus a 14.12% base rate (2.135x PR lift),
+with top-10% reversal-rate lift 2.439x. The delayed control was ROC-AUC 0.5627 / PR-AUC 0.1718.
+All six pre-frozen forward conditions passed. Full 2026 clear-sample ROC-AUC was 0.8577. v0.7 is now
+frozen as forward-validated observer evidence. 2026 is observed evidence from this point onward and must
+not be described as untouched again.
+
+The current frozen task is Observer -> LONG Trading Policy v1. The observer must remain an independent
+market observer and must never receive position or PnL state:
+- introduce a transport-neutral ObserverSnapshot message with timestamp, model version, trend side,
+  structural event type, calibrated P(REAL_REVERSAL), P(TREND_SURVIVES), frozen fold threshold and the
+  resulting market-state classification;
+- ObserverSnapshot must contain no position, entry, stop, target, PnL, MFE/MAE, risk or trading-action data;
+- a separate LongObserverPolicy translates observer state into a trade-management action;
+- frozen v1 action map for an already-open LONG:
+  * BULL + REAL_REVERSAL_RISK -> EXIT_LONG;
+  * BULL + TREND_SURVIVES -> HOLD_LONG;
+  * BEAR snapshot -> NO_ACTION, because that probability describes reversal of a bearish trend and must
+    not be reinterpreted as a LONG exit signal;
+- exit execution is the next native M5 open after the observer snapshot; on that same open, a stop gap or
+  target gap has priority over the observer exit;
+- use the exact v0.7 fold threshold selected from observer validation. Do not optimize a probability
+  threshold against trade PnL in v1;
+- walk-forward snapshot generation must train/calibrate/threshold on past clear labels but infer on every
+  structural event in the test year, including events whose eventual research label is AMBIGUOUS;
+- v1 development trading outcomes are 2024 and 2025 only; do not use 2026 trading outcomes in the first
+  policy-value experiment;
+- use the fixed economic-pass Trend LONG v1.1 executed candidate stream so observer-management value is
+  isolated from entry-selection changes;
+- entries, stops, 2R targets, 24-hour maximum holding time, fee assumptions and slippage assumptions remain
+  unchanged;
+- no entry blocking in v1;
+- no replacement trade is introduced after an observer early exit in v1; this first experiment measures
+  open-position management only;
+- compare baseline native-M5 path versus observer-managed native-M5 path for exactly the same trades;
+- report net/gross R, PF, drawdown, 2x-cost results, observer message counts, HOLD/EXIT/NO_ACTION counts,
+  observer-exit improvement/worsening, avoided baseline stops, premature exits before baseline targets and
+  per-year deltas;
+- the policy-value gate is frozen before the first PnL result:
+  * at least 100 managed trades;
+  * combined observer-managed net R must exceed baseline net R;
+  * observer-managed PF must exceed baseline PF;
+  * observer-managed max drawdown must not exceed baseline max drawdown;
+  * delta net R must be positive in both 2024 and 2025;
+  * observer-triggered exits must add positive total delta net R;
+  * observer-managed 2x-cost net R must exceed baseline 2x-cost net R;
+- this gate measures incremental trade-management value only. It must not be described as proof that the
+  underlying Trend LONG strategy is profitable;
+- do not tune v0.7 or LongObserverPolicy v1 after the first 2024-2025 PnL result. If the gate passes, freeze
+  the communication/policy rule before any separate use of already-observed 2026 trading outcomes.
 
 Daily Income Gate is frozen before the first result. A strategy passes only if all conditions hold across the combined fixed test years:
 - at least 250 eligible session days;
