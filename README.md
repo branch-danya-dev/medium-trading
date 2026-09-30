@@ -1263,6 +1263,73 @@ The frozen v2 gate requires:
 This is still an incremental position-management test, not proof of a profitable entry strategy. Do not
 change warning count, reset semantics or probability thresholds after seeing the first v2 result.
 
+v2 passed its frozen 2024-2025 development gate. On 279 fixed trades, baseline was -21.45R / PF 0.890 /
+13.39% drawdown, v1 was -19.01R / PF 0.864 / 13.59% drawdown, and v2 improved to -17.08R / PF 0.905 /
+11.88% drawdown. Confirmed exits added +4.37R, premature exits before later 2R targets fell from 32 in v1
+to 6 in v2, and the effect was positive in both years (+2.63R in 2024, +1.74R in 2025). v0.7 and Policy v2
+are now frozen.
+
+## Full Bot + Observer v2 trading validation — 2026
+
+The next experiment evaluates the complete frozen trading stack:
+
+    Trend LONG v1.1 entries
+      -> Market Observer v0.7
+      -> LongObserverPolicy v2
+      -> native-M5 execution
+
+2026 observer outcomes have already been inspected for model validation, but 2026 *trading outcomes* have
+not been used to design the entry bot, observer threshold or v2 policy. The trading rules are therefore
+frozen before this first PnL evaluation.
+
+The fixed entry window is:
+
+    2026-01-01T00:00:00Z <= entry_time < 2026-09-28T00:00:00Z
+
+September 28-29 data is reserved only for complete 24-hour exit/observer horizons. Do not admit later
+entries because September 30 is not a complete UTC day in this dataset.
+
+The existing forward2026 state and trade-flow bundle can be reused. Download only the matching M30 price
+history if it is not already present:
+
+    medium-trading download-bybit `
+      --symbol BTCUSDT `
+      --category linear `
+      --from 2025-11-01 `
+      --to 2026-09-29 `
+      --output-dir data/bybit/forward2026
+
+Then run the one-shot full-stack trading evaluator:
+
+    medium-trading btc-observer-long-policy-v2-forward-2026-evaluate `
+      --json artifacts/bybit_btcusdt_observer_long_policy_v2_forward_2026.json
+
+The command:
+- rebuilds the frozen pre-2026 v0.7 development observer;
+- generates 2026 observer snapshots without using 2026 data for fit, calibration or threshold selection;
+- extracts only economic-pass Trend LONG v1.1 trades inside the frozen 2026 entry window;
+- compares the identical entries with and without Policy v2;
+- executes confirmed observer exits at the next M5 open;
+- reports normal costs and 2x-cost stress;
+- compounds USD 1,000 equity at 0.5% risk per trade;
+- reports monthly diagnostics, warning/exit counts, avoided stops and premature target exits.
+
+The external full-stack trading gate is frozen before reading 2026 PnL:
+- at least 30 managed trades;
+- bot+v2 net R > 0;
+- bot+v2 PF > 1.0;
+- bot+v2 net R > baseline bot net R;
+- bot+v2 PF > baseline bot PF;
+- bot+v2 max drawdown <= baseline bot max drawdown;
+- confirmed v2 exits add positive total delta net R;
+- bot+v2 2x-cost net R > 0;
+- bot+v2 2x-cost PF > 1.0.
+
+PASS means the complete frozen bot+observer stack showed positive net edge after modeled costs on this
+external trading window, improved the same entry stream, and stayed profitable at 2x modeled costs. After
+this first result, 2026 trading outcomes are observed evidence and this exact window must not be retuned
+and rerun as if it were still untouched trading validation.
+
 The legacy daily gate remains strict and conjunctive for the older daily-income studies: at least 250 eligible sessions, at least 300 trades, >=70%
 active-session rate, >=45% profitable active days, positive average net R/session, net PF >=1.15,
 2x-cost PF >1.00, at least 2 positive yearly folds, >=60% positive months, worst day no worse than -2R,

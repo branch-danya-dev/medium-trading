@@ -9,6 +9,11 @@ from medium_trading.backtest.model import BacktestTrade
 from medium_trading.domain import Candle, Side
 from medium_trading.market_observer import MarketObserverSample
 from medium_trading.market_observer_v07 import FEATURE_NAMES
+from medium_trading.observer_long_forward_2026 import (
+    TRADING_FORWARD_END,
+    _compound_equity,
+    _forward_trading_gate,
+)
 from medium_trading.observer_long_integration_v2 import _policy_v2_gate
 from medium_trading.observer_policy import (
     LongObserverPolicy,
@@ -530,3 +535,88 @@ def test_v2_gate_requires_improvement_over_baseline_and_v1() -> None:
 
     assert gate["passes"] is True
     assert all(gate["conditions"].values())
+
+
+
+def test_2026_forward_runtime_uses_pre_2026_development_only(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        observer_v06,
+        "REVERSAL_PARAMS",
+        {
+            **observer_v06.REVERSAL_PARAMS,
+            "iterations": 20,
+            "depth": 4,
+        },
+    )
+
+    development = (
+        *_runtime_samples(2023),
+        *_runtime_samples(2024),
+        *_runtime_samples(2025),
+    )
+    forward = _runtime_samples(2026)
+
+    snapshots = observer_runtime.build_v07_2026_forward_snapshots(
+        development_samples=development,
+        forward_samples=forward,
+    )
+
+    assert len(snapshots) == len(forward)
+    assert all(snapshot.timestamp.year == 2026 for snapshot in snapshots)
+
+
+def test_forward_trading_entry_window_stops_before_incomplete_tail() -> None:
+    assert TRADING_FORWARD_END == datetime(2026, 9, 28, tzinfo=UTC)
+
+
+def test_forward_compound_equity_uses_fractional_risk() -> None:
+    final = _compound_equity(
+        (1.0, -1.0, 2.0),
+        starting_equity=1_000.0,
+        risk_fraction=0.005,
+    )
+
+    assert final == pytest.approx(
+        1_000.0 * 1.005 * 0.995 * 1.01
+    )
+
+
+def test_forward_trading_gate_requires_absolute_and_incremental_edge() -> None:
+    combined = {
+        "baseline_m5": {
+            "trades": 50,
+            "net_r": 1.0,
+            "profit_factor": 1.02,
+            "max_drawdown": 0.08,
+        },
+        "observer_managed_m5": {
+            "trades": 50,
+            "net_r": 5.0,
+            "profit_factor": 1.20,
+            "max_drawdown": 0.06,
+        },
+        "observer_managed_m5_2x_costs": {
+            "net_r": 2.0,
+            "profit_factor": 1.08,
+        },
+        "policy_diagnostics": {
+            "observer_exit_total_delta_net_r": 4.0,
+        },
+    }
+
+    gate = _forward_trading_gate(combined=combined)
+
+    assert gate["passes"] is True
+    assert all(gate["conditions"].values())
+
+    combined["baseline_m5"]["net_r"] = -5.0
+    combined["observer_managed_m5"]["net_r"] = -1.0
+    combined["observer_managed_m5"]["profit_factor"] = 0.98
+    failed = _forward_trading_gate(combined=combined)
+
+    assert failed["passes"] is False
+    assert failed["conditions"]["managed_net_r_exceeds_baseline"] is True
+    assert failed["conditions"]["managed_net_r_positive"] is False
+    assert failed["conditions"]["managed_profit_factor_above_one"] is False

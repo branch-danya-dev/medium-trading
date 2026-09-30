@@ -13,7 +13,7 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 - Legacy FX universe: EUR/USD, GBP/USD, USD/JPY, AUD/USD plus four external FX pairs used in validation.
 - Current market: Crypto, starting with BTC/USD.
 - Core data timeframe for the current candidate: native M5 with completed M15/M30/H1/H4 context.
-- Current research candidate: Observer -> LONG Trading Policy v2 with stateful warning confirmation using frozen forward-validated Market Observer v0.7.
+- Current research candidate: one-shot 2026 trading validation of frozen Trend LONG bot + Market Observer v0.7 + LongObserverPolicy v2.
 - Default project starting equity model: USD 1,000. The BTC Trend LONG v1 diagnostic baseline uses USD 10,000 so R-to-USD interpretation is explicit.
 - Default risk: 0.5% of equity per trade.
 - Maximum combined open risk: 1.0% of equity.
@@ -537,46 +537,56 @@ managed PF fell from 0.890 to 0.864, max drawdown rose slightly from 13.39% to 1
 +6.17R but 2025 lost -3.74R. Classification threshold therefore must not be equated with an immediate
 full-position exit threshold.
 
-The current frozen task is Observer -> LONG Trading Policy v2. Market Observer v0.7 remains completely
-unchanged and still has no access to position or PnL state:
-- keep the existing transport-neutral ObserverSnapshot contract unchanged;
-- add a separate stateful LongObserverPolicyV2 with CLEAR and WARNING policy state;
-- frozen v2 state machine for an already-open LONG:
-  * CLEAR + BULL REAL_REVERSAL_RISK -> WARNING_LONG only; do not exit;
-  * WARNING + a later independent BULL REAL_REVERSAL_RISK -> EXIT_LONG;
-  * WARNING + BULL TREND_SURVIVES -> HOLD_LONG and clear WARNING;
-  * any BEAR snapshot -> NO_ACTION and clear stale BULL WARNING;
-- "independent" means the confirming reversal-risk snapshot timestamp must be strictly later than the
-  snapshot that armed WARNING; event type does not have to differ;
-- use the exact same fold-specific v0.7 thresholds as v1. Do not optimize any probability threshold against
-  trade PnL;
-- every trade starts in CLEAR state; warning state must never leak from one trade into another;
-- EXIT_LONG still executes at the next native M5 open; stop-gap or target-gap on that same open retains
+Observer -> LONG Trading Policy v2 PASSED its frozen 2024-2025 development gate. On the same 279
+economic-pass Trend LONG v1.1 trades, baseline was -21.45R / PF 0.890 / max drawdown 13.39%, frozen v1
+was -19.01R / PF 0.864 / drawdown 13.59%, and v2 improved to -17.08R / PF 0.905 / drawdown 11.88%.
+v2 added +4.37R versus baseline, reduced observer exits from 146 to 34 and premature exits before later
+2R targets from 32 to 6. Confirmed exits added +4.37R total. The effect was positive in both development
+years: +2.63R in 2024 and +1.74R in 2025. 2x-cost net R also improved versus both baseline and v1.
+Market Observer v0.7 and LongObserverPolicy v2 are now frozen.
+
+The current frozen task is the first and only 2026 trading-outcome validation of the complete stack:
+Trend LONG v1.1 entry bot + forward-validated Market Observer v0.7 + frozen LongObserverPolicy v2.
+2026 observer labels have already been observed during observer validation, but 2026 trading outcomes have
+not been used to design or tune the entry strategy, observer threshold or v2 policy:
+- do not change Trend LONG v1.1 entry logic, economic gate, stop rule, 2R target or 24-hour holding horizon;
+- do not change Market Observer v0.7, its features, calibration, model parameters or pre-2026 threshold rule;
+- do not change LongObserverPolicy v2 warning count, reset semantics or exit execution;
+- fixed trading entry window is 2026-01-01T00:00:00Z inclusive through 2026-09-28T00:00:00Z exclusive;
+- September 28-29 data is horizon-only data so every allowed entry has a complete 24-hour trade path and
+  enough future market data for the historical observer event extractor; do not admit later entries;
+- forward M30 data must be downloaded separately with warmup from 2025-11-01 through 2026-09-29;
+- reuse the existing separate forward2026 M5/OI/account-ratio/funding/trade-flow bundle;
+- observer snapshots for 2026 must be produced by the same chronological v0.7 runtime with all model fit,
+  Platt calibration and threshold selection restricted to pre-2026 development samples;
+- inference must still be emitted for every 2026 structural event, including events whose research label is
+  AMBIGUOUS; never filter live-like messages by future outcome labels;
+- candidate trades are exactly the economic-pass Trend LONG v1.1 executed candidates whose entry times fall
+  inside the frozen trading entry window;
+- execution remains native M5; confirmed observer exits occur at the next M5 open with stop-gap/target-gap
   priority;
-- use exactly the same 2024-2025 walk-forward snapshots, including inference on future-AMBIGUOUS events;
-- use exactly the same economic-pass Trend LONG v1.1 executed candidate stream;
-- entries, stops, 2R targets, 24-hour maximum holding time, fees, slippage and 2x-cost stress remain
-  unchanged;
-- no entry blocking and no replacement trades in v2;
-- do not use 2026 trading outcomes in the v2 development policy-value experiment;
-- report baseline, frozen v1 and v2 side-by-side plus WARNING/HOLD/EXIT/NO_ACTION counts, confirmed-exit
-  improvement/worsening, avoided stops, premature target exits, per-year deltas and 2x-cost results;
-- the v2 policy-value gate is frozen before the first v2 PnL result:
-  * at least 100 managed trades;
-  * v2 combined delta net R versus baseline > 0;
-  * v2 managed net R must exceed v1 managed net R;
-  * v2 PF must exceed baseline PF;
-  * v2 PF must exceed v1 PF;
-  * v2 max drawdown must not exceed baseline max drawdown;
-  * v2 delta net R must be positive in both 2024 and 2025;
+- no entry blocking and no replacement trades are introduced in this validation;
+- starting equity remains USD 1,000 and risk remains 0.5% of current equity per trade;
+- fees remain 5.5 bps/side and slippage 2.0 bps/side; also report the frozen 2x-cost stress;
+- report baseline bot versus bot+observer v2 on identical entries: trades, gross/net R, PF, win rate,
+  drawdown, final compounded equity, 2x-cost metrics, warning/confirmed-exit counts, avoided stops,
+  premature target exits, monthly results and incremental exit value;
+- the one-shot full-stack trading gate is frozen before reading 2026 trading PnL:
+  * at least 30 managed trades;
+  * bot+v2 net R > 0 after modeled costs;
+  * bot+v2 PF > 1.0;
+  * bot+v2 net R must exceed the same baseline bot;
+  * bot+v2 PF must exceed the same baseline bot;
+  * bot+v2 max drawdown must not exceed baseline max drawdown;
   * confirmed v2 exits must add positive total delta net R;
-  * v2 2x-cost net R must exceed baseline 2x-cost net R;
-  * v2 2x-cost net R must exceed v1 2x-cost net R;
-  * v2 must produce fewer premature exits before baseline targets than v1;
-- this remains an incremental position-management test only and must not be described as proof that the
-  underlying Trend LONG entry strategy is profitable;
-- do not tune v0.7, warning count, reset rules or any probability threshold after the first v2 result.
-  If v2 passes, freeze the policy before any separate 2026 trading-outcome evaluation.
+  * bot+v2 2x-cost net R > 0;
+  * bot+v2 2x-cost PF > 1.0;
+- PASS means this frozen bot+observer stack produced positive net edge after modeled costs on the external
+  2026 trading window, improved the same entries, and survived 2x modeled costs;
+- FAIL must be reported as FAIL. Do not tune any component on this 2026 PnL window and rerun it as if it
+  were still external validation;
+- after the first result, 2026 trading outcomes are observed evidence and cannot be described as untouched
+  trading validation again.
 
 Daily Income Gate is frozen before the first result. A strategy passes only if all conditions hold across the combined fixed test years:
 - at least 250 eligible session days;
