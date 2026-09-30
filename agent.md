@@ -13,7 +13,7 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 - Legacy FX universe: EUR/USD, GBP/USD, USD/JPY, AUD/USD plus four external FX pairs used in validation.
 - Current market: Crypto, starting with BTC/USD.
 - Core data timeframe for the current candidate: native M5 with completed M15/M30/H1/H4 context.
-- Current research candidate: Bybit BTCUSDT Market Observer v0.7 for 15-minute confirmed-event reversal observation.
+- Current research candidate: Bybit BTCUSDT Market Observer v0.7 label-overlap audit for unresolved-at-T+15 reversal quality.
 - Default project starting equity model: USD 1,000. The BTC Trend LONG v1 diagnostic baseline uses USD 10,000 so R-to-USD interpretation is explicit.
 - Default risk: 0.5% of equity per trade.
 - Maximum combined open risk: 1.0% of equity.
@@ -483,8 +483,39 @@ The current frozen task is Market Observer v0.7. It changes only the prediction 
   2024 and 2025, not merely in the combined aggregate;
 - v0.7 remains an observer research task and emits no BUY/SELL/HOLD/EXIT action and no PnL conclusion.
 
-Do not tune v0.7 after the first result. The single question is whether the observer was previously
-looking at the market too early.
+Market Observer v0.7 passed its frozen full-sample feasibility gate by a wide margin.
+Combined confirmed-event ROC-AUC was 0.8463 versus delayed-control 0.5711; PR-AUC was 0.2740 versus
+0.1122; PR-AUC lift was 3.316x versus 1.358x. The improvement repeated in both development folds:
+2024 confirmed ROC-AUC 0.8539 / PR-AUC 0.2676 and 2025 confirmed ROC-AUC 0.8393 / PR-AUC 0.2848.
+The dominant feature was 15-minute adverse displacement after the disturbance, followed by closes and
+mean close distance beyond the defended level and post-event path efficiency. This strongly supports the
+hypothesis that the earlier observer was evaluating the market too early.
+
+However, v0.7 is not promoted yet. The current frozen task is the v0.7 label-overlap audit:
+- do not alter or retrain the v0.7 model, feature set, label definitions, 15-minute window, calibration,
+  thresholds or chronological folds;
+- reproduce the exact frozen v0.7 delayed-control and confirmed models;
+- for every original disturbance, determine whether its frozen label was already fully knowable at T+15m;
+- NOISE is resolved at T+15 only when the +0.75 ATR with-trend barrier was reached before the -0.75 ATR
+  adverse barrier inside the first three completed post-disturbance M5 bars;
+- CORRECTION is resolved at T+15 only when the -0.75 ATR adverse barrier occurred first and the +0.75 ATR
+  with-trend recovery barrier also occurred inside those same three completed M5 bars;
+- same-bar trend/adverse barrier touch is resolved as AMBIGUOUS, matching the original label semantics;
+- REAL_REVERSAL is never considered resolved at T+15 because the frozen label requires no +0.75 ATR
+  trend recovery across the full 8-hour horizon;
+- mark every clear test sample as resolved-before-prediction or unresolved-at-prediction;
+- report counts and class distributions for both groups in 2024, 2025 and combined;
+- keep the trained v0.7 models unchanged and recalculate metrics only on the unresolved test subset;
+- report delayed-control and confirmed ROC-AUC, PR-AUC, PR-AUC lift, Brier/ECE, top-tail concentration
+  and frozen-threshold operating-point metrics on the unresolved subset;
+- no recalibration is allowed on the unresolved subset; its shifted class prevalence must remain visible;
+- 2026 remains untouched;
+- this audit is diagnostic only and emits no trading action or PnL conclusion.
+
+The audit passes only if the confirmed-event observer retains substantial discrimination on labels that
+were not yet resolved at T+15, with directionally useful performance in both 2024 and 2025. If most of the
+0.846 ROC-AUC disappears after resolved samples are removed, treat the v0.7 full-sample result as materially
+inflated by target overlap rather than as deployable evidence.
 
 Daily Income Gate is frozen before the first result. A strategy passes only if all conditions hold across the combined fixed test years:
 - at least 250 eligible session days;

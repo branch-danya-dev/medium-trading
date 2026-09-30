@@ -1046,6 +1046,42 @@ top-probability reversal concentration separately in 2024 and 2025, then combine
 improve ranking directionally in both development folds to survive. Do not test alternate 10/20-minute
 windows after seeing this result.
 
+v0.7 passed that full-sample feasibility test strongly: combined ROC-AUC reached 0.8463 and PR-AUC 0.2740,
+with directionally similar improvements in both 2024 and 2025. Before promoting the observer, run one
+diagnostic audit for label overlap at the T+15 prediction time.
+
+## v0.7 label-overlap audit
+
+This audit does not change or retrain v0.7. It asks whether some frozen outcome labels were already fully
+known by the time the confirmed observer made its T+15 prediction.
+
+Resolution rules match the original label definition:
+- NOISE is already resolved only if +0.75 ATR with-trend was reached before -0.75 ATR adverse inside the
+  first three completed post-disturbance M5 bars;
+- CORRECTION is already resolved only if -0.75 ATR adverse occurred first and +0.75 ATR with-trend recovery
+  also occurred by T+15;
+- a same-bar trend/adverse touch is resolved as AMBIGUOUS;
+- REAL_REVERSAL is never considered resolved at T+15 because its label requires no recovery over the full
+  8-hour horizon.
+
+The frozen v0.7 models are reproduced exactly. Metrics are then recalculated only on the clear test samples
+whose labels were still unresolved at prediction time. There is no retraining, threshold retuning or
+recalibration on that clean subset.
+
+Run:
+
+    medium-trading btc-market-observer-v0-7-overlap-audit `
+      --m5 "data/bybit/state/BTCUSDT_M5.csv" `
+      --open-interest "data/bybit/state/BTCUSDT_OPEN_INTEREST_30M.csv" `
+      --account-ratio "data/bybit/state/BTCUSDT_ACCOUNT_RATIO_30M.csv" `
+      --funding "data/bybit/state/BTCUSDT_FUNDING.csv" `
+      --trade-flow "data/bybit/flow/BTCUSDT_TRADE_FLOW_M5.csv" `
+      --json artifacts/bybit_btcusdt_market_observer_v0_7_overlap_audit.json
+
+Read the audit by comparing full-v0.7 versus unresolved-only ROC-AUC, PR-AUC and top-tail lift, separately
+for 2024 and 2025 and combined. If the unresolved-only confirmed observer remains materially above the
+delayed control in both years, the 15-minute confirmation result is not merely a target-overlap artifact.
+
 The legacy daily gate remains strict and conjunctive for the older daily-income studies: at least 250 eligible sessions, at least 300 trades, >=70%
 active-session rate, >=45% profitable active days, positive average net R/session, net PF >=1.15,
 2x-cost PF >1.00, at least 2 positive yearly folds, >=60% positive months, worst day no worse than -2R,
