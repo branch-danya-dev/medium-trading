@@ -8,11 +8,8 @@ from medium_trading.market_observer import (
     CORRECTION_BARRIER_ATR,
     TREND_BARRIER_ATR,
     MarketObserverSample,
-    _event_distribution,
-    _state_distribution,
     _touches_adverse,
     _touches_trend,
-    _trend_distribution,
 )
 from medium_trading.market_observer_v05 import (
     _binary_metrics,
