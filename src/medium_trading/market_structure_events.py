@@ -347,6 +347,8 @@ def _simulate_managed_path(
                 continue
             if break_state is not None:
                 continue
+            if new_events or break_outcome is not None:
+                continue
 
         if sweep_state is not None:
             elapsed = index - sweep_state.start_index
@@ -952,7 +954,7 @@ def _profit_factor(values: tuple[float, ...]) -> float:
 
 
 def _require_contiguous_m5(candles: tuple[Candle, ...]) -> None:
-    for previous, current in zip(candles, candles[1:], strict=True):
+    for previous, current in zip(candles, candles[1:]):
         if current.timestamp - previous.timestamp != timedelta(minutes=5):
             raise ValueError(
                 "M5 history has a gap between "
