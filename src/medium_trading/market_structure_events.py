@@ -2,6 +2,7 @@ from bisect import bisect_left
 from collections import Counter
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
+from itertools import pairwise
 from statistics import mean
 
 from medium_trading.backtest.model import BacktestTrade
@@ -954,7 +955,7 @@ def _profit_factor(values: tuple[float, ...]) -> float:
 
 
 def _require_contiguous_m5(candles: tuple[Candle, ...]) -> None:
-    for previous, current in zip(candles, candles[1:]):
+    for previous, current in pairwise(candles):
         if current.timestamp - previous.timestamp != timedelta(minutes=5):
             raise ValueError(
                 "M5 history has a gap between "
