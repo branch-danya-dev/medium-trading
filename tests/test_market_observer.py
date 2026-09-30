@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
-from medium_trading.domain import Candle
 from medium_trading import market_observer as observer
+from medium_trading.domain import Candle
 
 
 def _bar(
