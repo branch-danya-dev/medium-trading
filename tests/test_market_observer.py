@@ -1,5 +1,7 @@
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from medium_trading import market_observer as observer
 from medium_trading import market_observer_v05 as observer_v05
 from medium_trading import market_observer_v06 as observer_v06
