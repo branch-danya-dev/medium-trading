@@ -382,8 +382,6 @@ def evaluate_market_observer_v05(
     combined_reversal_truth = tuple(
         label == "REAL_REVERSAL" for label in combined_truth
     )
-    weighted_combined_threshold = mean(combined_thresholds)
-
     return {
         "research_scope": {
             "market": "Bybit BTCUSDT linear perpetual",
@@ -452,16 +450,10 @@ def evaluate_market_observer_v05(
             "event_distribution": _event_distribution(combined_test),
             "trend_distribution": _trend_distribution(combined_test),
             "weighted_reversal": {
-                "threshold_note": (
-                    "combined hard-threshold metrics use the mean of the two "
-                    "past-only fold thresholds only as a summary; fold metrics are "
-                    "the valid operating-point results"
-                ),
-                "mean_fold_threshold": weighted_combined_threshold,
-                "ranking_and_calibration": _binary_metrics(
+                "fold_thresholds": combined_thresholds,
+                "ranking_and_calibration": _binary_ranking_metrics(
                     combined_reversal_truth,
                     tuple(combined_weighted_reversal),
-                    weighted_combined_threshold,
                     metrics,
                 ),
                 "top_features": _top_features(
