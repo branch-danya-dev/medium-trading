@@ -105,11 +105,11 @@ from medium_trading.ml_filter import (
 )
 from medium_trading.ml_filter import evaluation_payload as ml_evaluation_payload
 from medium_trading.ml_filter import forward_evaluation_payload as ml_forward_payload
-from medium_trading.observer_long_integration import (
-    evaluate_long_observer_policy_v1,
-)
 from medium_trading.observer_long_forward_2026 import (
     evaluate_long_observer_policy_v2_forward_2026,
+)
+from medium_trading.observer_long_integration import (
+    evaluate_long_observer_policy_v1,
 )
 from medium_trading.observer_long_integration_v2 import (
     evaluate_long_observer_policy_v2,
