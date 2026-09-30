@@ -57,16 +57,16 @@ from medium_trading.direct_ml import (
 )
 from medium_trading.direct_ml import evaluation_payload as direct_ml_payload
 from medium_trading.direct_ml import final_evaluation_payload as direct_ml_final_payload
+from medium_trading.market_observer import (
+    evaluate_market_observer_v04,
+    extract_market_observer_samples,
+)
 from medium_trading.market_state_model import (
     evaluate_market_state_v01,
     extract_market_state_samples,
 )
 from medium_trading.market_state_model import (
     evaluation_payload as market_state_payload,
-)
-from medium_trading.market_observer import (
-    evaluate_market_observer_v04,
-    extract_market_observer_samples,
 )
 from medium_trading.market_structure_events import evaluate_market_structure_events_v03
 from medium_trading.market_structure_model import (
