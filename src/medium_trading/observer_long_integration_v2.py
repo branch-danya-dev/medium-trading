@@ -8,9 +8,9 @@ from medium_trading.observer_long_integration import (
     DEVELOPMENT_YEARS,
     MIN_POLICY_TRADES,
     ObserverTradeComparison,
-    evaluate_long_observer_policy_v1,
     _comparison_summary,
     _simulate_trade_pair,
+    evaluate_long_observer_policy_v1,
 )
 from medium_trading.observer_policy import ObserverSnapshot
 from medium_trading.observer_policy_v2 import LongObserverPolicyV2
