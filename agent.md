@@ -12,8 +12,8 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 - Research scope: multiple liquid markets, evaluated one strategy/market hypothesis at a time.
 - Legacy FX universe: EUR/USD, GBP/USD, USD/JPY, AUD/USD plus four external FX pairs used in validation.
 - Current market: Crypto, starting with BTC/USD.
-- Core data timeframe for the current candidate: 30m.
-- Current research candidate: Bybit BTCUSDT Market Structure Event Model v0.3 for deterministic causal event-driven trade-management feasibility.
+- Core data timeframe for the current candidate: native M5 with completed M15/M30/H1/H4 context.
+- Current research candidate: Bybit BTCUSDT Market Observer v0.4 for market-only noise/correction/real-reversal classification.
 - Default project starting equity model: USD 1,000. The BTC Trend LONG v1 diagnostic baseline uses USD 10,000 so R-to-USD interpretation is explicit.
 - Default risk: 0.5% of equity per trade.
 - Maximum combined open risk: 1.0% of equity.
@@ -294,10 +294,62 @@ before any further ML attempt:
   BODY_BREAK_UNCONFIRMED outcomes, and SWEEP_RECLAIM follow-through to +0.5R/+1R/2R;
 - do not add ML, tune structure thresholds or change the underlying entry strategy before reading v0.3.
 
-v0.3 passes its feasibility purpose only if the deterministic causal management improves the original
-M5 outcome in a stable, economically meaningful way rather than merely benefiting from M5 execution
-resolution. If it helps, a later ML task may be considered only for the unresolved BODY_BREAK_UNCONFIRMED
-gray zone. If it does not help, do not train another classifier on the same event formulation.
+v0.3 FAILED as a deterministic EXIT policy but produced a useful market-structure diagnostic.
+The native-M5 control matched the source M30 economics exactly, so the result was not an execution-resolution
+artifact. On 407 fixed candidates, original M5 was +25.42R gross / -45.22R net with net PF 0.843 and
+25.4% max drawdown; deterministic structural management fell to +7.93R gross / -62.70R net with net PF
+0.658 and 29.2% max drawdown. Structural exits improved 191/292 cases and worsened 101/292, but the
+mistakes were more expensive, producing -17.48R delta overall. BREAK_ACCEPTED was -2.99R delta and
+RETEST_HELD was -14.49R delta. SWEEP_RECLAIM remained diagnostically useful: about 64.6% later reached
++0.5R, 51.2% reached +1R and 29.9% reached the 2R target. Do not promote BREAK_ACCEPTED or RETEST_HELD
+to hard EXIT rules.
+
+The current frozen task is Market Observer v0.4. It is an ML observer of the market, not a trading-decision
+model. It must remain completely independent of open positions and strategy outcomes:
+- input data: existing 2023-2025 Bybit BTCUSDT native M5, open interest, long/short account ratio and funding;
+- do not load or use 2026;
+- do not use trade entry, stop, target, current R, MFE, MAE, PnL, risk, fee or slippage features;
+- build completed M15/M30/H1/H4 context causally from M5;
+- prevailing market trend is defined only from completed H4: BULL when close > EMA20 and EMA20 is above
+  its value three completed H4 bars earlier; BEAR is the symmetric inverse; otherwise do not sample;
+- confirmed M5 swing remains 2 bars left + 2 bars right and becomes usable only after both right bars close;
+- BULL disturbances attack the latest confirmed swing low; BEAR disturbances attack the latest confirmed
+  swing high;
+- create at most one sample for the first causal disturbance of each defended swing while that trend side
+  is active;
+- event types are SWEEP_RECLAIM and BODY_BREAK; BODY_BREAK requires a close at least 0.10 ATR5 through
+  the defended swing;
+- feature groups are normalized multi-timeframe returns, ATR14/ATR200, realized-volatility ratio,
+  Kaufman-style efficiency, candle overlap, body/wick geometry, relative/z-scored volume, EMA distance
+  and slope, RSI14 plus rolling RSI z-score, swing distances/age/quality, structural penetration/counts,
+  open-interest changes, price/OI interaction, long-account ratio and funding;
+- directional price features are signed relative to the prevailing H4 trend so positive means with-trend;
+- categorical CatBoost features are trend side, event type, UTC session bucket and weekday;
+- label horizon is fixed at 8 hours and labels are market outcomes, never trade WIN/LOSS:
+  * NOISE = +0.75 ATR with-trend is reached before -0.75 ATR adverse;
+  * CORRECTION = -0.75 ATR adverse is reached first, then +0.75 ATR with-trend recovers inside 8h;
+  * REAL_REVERSAL = accepted structural damage reaches at least -1.50 ATR against trend and the +0.75 ATR
+    trend-recovery barrier is not reached inside 8h;
+  * AMBIGUOUS = unresolved outcomes;
+- acceptance remains at least 3 closes on the adverse side inside the 5-bar window; BODY_BREAK counts the
+  event bar itself;
+- train and score only clear NOISE/CORRECTION/REAL_REVERSAL samples; always report AMBIGUOUS counts;
+- primary model: CatBoostClassifier with fixed MultiClass settings: iterations=300, depth=6,
+  learning_rate=0.05, l2_leaf_reg=5, random_seed=42, no threshold search;
+- fixed benchmark: RandomForestClassifier with 300 trees, max_depth=8, min_samples_leaf=20,
+  max_features=sqrt, balanced_subsample classes, random_state=42;
+- expanding walk-forward test folds are 2024 and 2025; training labels must be fully known before the
+  fold and an additional 8-hour embargo is required after label completion;
+- 2023 is training-only; 2024/2025 are development folds; 2026 remains untouched;
+- report class distribution, event/trend distribution, per-class precision/recall/F1/lift, macro F1,
+  multiclass ROC-AUC, log loss, REAL_REVERSAL PR-AUC/ROC-AUC/Brier/calibration error, fixed probability
+  bands >=0.50/0.60/0.70/0.80, feature importance and top-10 feature-rank overlap across folds;
+- v0.4 emits probabilities/state estimates only. It must not issue BUY/SELL/HOLD/EXIT decisions and must
+  not be evaluated by trading PnL.
+
+Do not tune v0.4 from its first result. First answer whether market-only features contain stable
+out-of-time information about NOISE/CORRECTION/REAL_REVERSAL, and whether CatBoost materially exceeds
+the fixed RandomForest benchmark in both development folds.
 
 Daily Income Gate is frozen before the first result. A strategy passes only if all conditions hold across the combined fixed test years:
 - at least 250 eligible session days;

@@ -57,6 +57,10 @@ from medium_trading.direct_ml import (
 )
 from medium_trading.direct_ml import evaluation_payload as direct_ml_payload
 from medium_trading.direct_ml import final_evaluation_payload as direct_ml_final_payload
+from medium_trading.market_observer import (
+    evaluate_market_observer_v04,
+    extract_market_observer_samples,
+)
 from medium_trading.market_state_model import (
     evaluate_market_state_v01,
     extract_market_state_samples,
@@ -481,6 +485,15 @@ def main() -> None:
     market_structure_events.add_argument("--risk", type=float, default=0.005)
     market_structure_events.add_argument("--json", dest="json_output")
 
+    market_observer = subparsers.add_parser(
+        "btc-market-observer-v0-4-evaluate"
+    )
+    market_observer.add_argument("--m5", required=True)
+    market_observer.add_argument("--open-interest", required=True)
+    market_observer.add_argument("--account-ratio", required=True)
+    market_observer.add_argument("--funding", required=True)
+    market_observer.add_argument("--json", dest="json_output")
+
     args = parser.parse_args()
     if args.command == "download-dukascopy":
         _download_dukascopy(args)
@@ -524,6 +537,8 @@ def main() -> None:
         _btc_market_structure_v0_2_evaluate(args)
     elif args.command == "btc-market-structure-events-v0-3-evaluate":
         _btc_market_structure_events_v0_3_evaluate(args)
+    elif args.command == "btc-market-observer-v0-4-evaluate":
+        _btc_market_observer_v0_4_evaluate(args)
 
 
 def _download_dukascopy(args: argparse.Namespace) -> None:
@@ -1398,6 +1413,61 @@ def _btc_market_structure_events_v0_3_evaluate(args: argparse.Namespace) -> None
             encoding="utf-8",
         )
         print(f"wrote Market Structure Event Model v0.3 report to {output}")
+
+
+def _btc_market_observer_v0_4_evaluate(args: argparse.Namespace) -> None:
+    candles_5m = load_candles(Path(args.m5))
+    open_interest = load_open_interest(Path(args.open_interest))
+    account_ratio = load_account_ratio(Path(args.account_ratio))
+    funding = load_funding(Path(args.funding))
+
+    samples = extract_market_observer_samples(
+        candles_5m=candles_5m,
+        open_interest=open_interest,
+        account_ratio=account_ratio,
+        funding=funding,
+    )
+    payload = evaluate_market_observer_v04(samples)
+    combined = payload["combined"]
+    catboost = combined["catboost"]["metrics"]
+    forest = combined["random_forest"]["metrics"]
+    cat_reversal = catboost["per_class"]["REAL_REVERSAL"]
+    forest_reversal = forest["per_class"]["REAL_REVERSAL"]
+
+    print("BTCUSDT Market Observer v0.4")
+    print(
+        f"samples={combined['test_samples']} "
+        f"clear={combined['clear_samples']} "
+        f"excluded={combined['excluded_samples']} "
+        f"states={combined['state_distribution']}"
+    )
+    print(
+        f"CatBoost macro_F1={catboost['macro_f1']:.3f} "
+        f"reversal_precision={cat_reversal['precision']:.1%} "
+        f"reversal_recall={cat_reversal['recall']:.1%} "
+        f"reversal_lift={cat_reversal['precision_lift']:.2f}x "
+        f"PR_AUC={catboost['real_reversal']['pr_auc']:.3f} "
+        f"ROC_AUC={catboost['real_reversal']['roc_auc']:.3f}"
+    )
+    print(
+        f"RandomForest macro_F1={forest['macro_f1']:.3f} "
+        f"reversal_precision={forest_reversal['precision']:.1%} "
+        f"reversal_recall={forest_reversal['recall']:.1%} "
+        f"reversal_lift={forest_reversal['precision_lift']:.2f}x "
+        f"PR_AUC={forest['real_reversal']['pr_auc']:.3f} "
+        f"ROC_AUC={forest['real_reversal']['roc_auc']:.3f}"
+    )
+    print(f"events={combined['event_distribution']}")
+    print(f"trends={combined['trend_distribution']}")
+
+    if args.json_output:
+        output = Path(args.json_output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(
+            json.dumps(payload, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        print(f"wrote Market Observer v0.4 report to {output}")
 
 
 def _strategy_from_name(name: str) -> Strategy:
