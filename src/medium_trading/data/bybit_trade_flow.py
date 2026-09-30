@@ -7,6 +7,7 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from itertools import pairwise
 from pathlib import Path
 from typing import Callable
 
@@ -350,7 +351,7 @@ def _validate_range(
 
 
 def _validate_contiguous(points: tuple[TradeFlowPoint, ...]) -> None:
-    for previous, current in zip(points, points[1:]):
+    for previous, current in pairwise(points):
         if current.timestamp - previous.timestamp != timedelta(minutes=5):
             raise BybitTradeFlowError(
                 "trade-flow gap between "
