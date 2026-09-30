@@ -805,6 +805,50 @@ def test_v07_forward_uses_pre_2026_fit_and_scores_frozen_window(
     assert result["unresolved_only"]["samples"] >= 100
     assert result["full"]["confirmed"]["roc_auc"] > 0.80
     assert result["unresolved_only"]["confirmed"]["roc_auc"] > 0.80
-    assert result["frozen_gate"]["passes"] is True
-    assert all(result["frozen_gate"]["conditions"].values())
+    assert result["frozen_gate"]["observed"]["unresolved_samples"] == (
+        result["unresolved_only"]["samples"]
+    )
+    assert set(result["frozen_gate"]["conditions"]) == {
+        "minimum_unresolved_samples",
+        "minimum_confirmed_roc_auc",
+        "minimum_confirmed_pr_auc_lift",
+        "confirmed_roc_auc_exceeds_control",
+        "confirmed_pr_auc_exceeds_control",
+        "minimum_confirmed_top10_lift",
+    }
     assert result["monthly_unresolved"]
+
+
+
+def test_v07_forward_gate_uses_frozen_thresholds() -> None:
+    control = {
+        "roc_auc": 0.60,
+        "pr_auc": 0.20,
+        "pr_auc_lift_vs_base": 1.20,
+        "top_fraction_lift": {
+            "top_10pct": {"lift_vs_base": 1.20},
+        },
+    }
+    confirmed = {
+        "roc_auc": 0.70,
+        "pr_auc": 0.30,
+        "pr_auc_lift_vs_base": 1.60,
+        "top_fraction_lift": {
+            "top_10pct": {"lift_vs_base": 1.80},
+        },
+    }
+
+    gate = observer_v07_forward._forward_gate(
+        samples=500,
+        control=control,
+        confirmed=confirmed,
+    )
+
+    assert gate["passes"] is True
+    assert all(gate["conditions"].values())
+    assert gate["thresholds"] == {
+        "minimum_unresolved_samples": 100,
+        "minimum_confirmed_roc_auc": 0.65,
+        "minimum_confirmed_pr_auc_lift": 1.40,
+        "minimum_confirmed_top10_lift": 1.50,
+    }
