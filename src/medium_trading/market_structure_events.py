@@ -129,9 +129,11 @@ def evaluate_market_structure_events_v03(
     if not source_trades:
         raise ValueError("market-structure event evaluation found no economic-pass trades")
 
+    m5_times = [candle.timestamp for candle in candles_5m]
     comparisons = tuple(
         _simulate_trade_pair(
             candles_5m=candles_5m,
+            m5_times=m5_times,
             trade=trade,
             fee_bps_per_side=fee_bps_per_side,
             slippage_bps_per_side=slippage_bps_per_side,
@@ -195,10 +197,13 @@ def _simulate_trade_pair(
     *,
     candles_5m: tuple[Candle, ...],
     trade: BacktestTrade,
+    m5_times: list[datetime] | None = None,
     fee_bps_per_side: float,
     slippage_bps_per_side: float,
 ) -> TradeComparison:
-    times = [candle.timestamp for candle in candles_5m]
+    times = m5_times if m5_times is not None else [
+        candle.timestamp for candle in candles_5m
+    ]
     entry_index = bisect_left(times, trade.entry_time)
     if entry_index >= len(candles_5m) or times[entry_index] != trade.entry_time:
         raise ValueError(
