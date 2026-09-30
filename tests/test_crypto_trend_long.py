@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 from medium_trading.domain import Candle, Side, StrategyContext
 from medium_trading.strategy import (
     CryptoTrendLongStrategy,
+    CryptoTrendLongV2Strategy,
     CryptoTrendLongV11Strategy,
 )
 
@@ -106,8 +107,7 @@ def test_requires_confirmation_close_above_pullback_high() -> None:
 
 
 
-def test_v1_1_adds_m30_atr_stop_floor_without_changing_long_setup() -> None:
-    context = _context()
+def _with_m30_warmup(context: StrategyContext) -> StrategyContext:
     extra_start = context.candles_30m[0].timestamp - timedelta(minutes=30 * 13)
     warmup = tuple(
         _bar(
@@ -119,12 +119,16 @@ def test_v1_1_adds_m30_atr_stop_floor_without_changing_long_setup() -> None:
         )
         for index in range(13)
     )
-    context = StrategyContext(
+    return StrategyContext(
         symbol=context.symbol,
         candles_4h=context.candles_4h,
         candles_1h=(),
         candles_30m=warmup + context.candles_30m,
     )
+
+
+def test_v1_1_adds_m30_atr_stop_floor_without_changing_long_setup() -> None:
+    context = _with_m30_warmup(_context())
 
     signal = CryptoTrendLongV11Strategy().evaluate(context)
 
@@ -133,3 +137,36 @@ def test_v1_1_adds_m30_atr_stop_floor_without_changing_long_setup() -> None:
     assert signal.stop == 99_700
     assert signal.minimum_stop_distance is not None
     assert signal.minimum_stop_distance > 0
+
+
+
+def test_v2_accepts_persistent_h4_trend() -> None:
+    context = _with_m30_warmup(_context())
+
+    signal = CryptoTrendLongV2Strategy().evaluate(context)
+
+    assert signal is not None
+    assert signal.strategy == "crypto_trend_long_v2"
+    assert any("persistent H4 regime" in reason for reason in signal.reasons)
+
+
+def test_v2_rejects_temporary_h4_recovery_that_v1_1_accepts() -> None:
+    context = _with_m30_warmup(_context())
+    candles_4h = list(context.candles_4h)
+    disrupted = candles_4h[-2]
+    candles_4h[-2] = _bar(
+        disrupted.timestamp,
+        open_=94_400,
+        high=94_500,
+        low=91_900,
+        close=92_000,
+    )
+    context = StrategyContext(
+        symbol=context.symbol,
+        candles_4h=tuple(candles_4h),
+        candles_1h=context.candles_1h,
+        candles_30m=context.candles_30m,
+    )
+
+    assert CryptoTrendLongV11Strategy().evaluate(context) is not None
+    assert CryptoTrendLongV2Strategy().evaluate(context) is None

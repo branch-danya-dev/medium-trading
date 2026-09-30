@@ -1330,6 +1330,82 @@ external trading window, improved the same entry stream, and stayed profitable a
 this first result, 2026 trading outcomes are observed evidence and this exact window must not be retuned
 and rerun as if it were still untouched trading validation.
 
+That one-shot trading test failed. The baseline entry stream was already negative before costs:
+89 trades, gross -8.22R and gross PF 0.859. After modeled costs baseline was -24.91R / PF 0.643 /
+12.10% drawdown. The frozen observer+policy stack was slightly worse at -25.69R / PF 0.631 /
+12.44% drawdown, with final USD 1,000 equity 877.76. At 2x costs managed net was -42.37R and final
+equity 807.37. Only two confirmed observer exits occurred and together added -0.78R. This shifts the
+research bottleneck from exit management to entry quality.
+
+## BTC Trend LONG Entry Strategy v2
+
+Observer v0.7 and Policy v2 are frozen and removed from the current experiment. Entry v2 asks one question:
+does a stricter but non-fitted H4 trend definition make the unchanged M30 pullback entry meaningfully better
+than matched random timing?
+
+Development data remains only 2023-2025. 2026 is already observed and is not used to select or evaluate v2.
+
+The only v2 change is persistent H4 regime confirmation. The existing 3-H4-bar lookback is reused:
+
+    EMA20 rises on each of the last 3 completed H4 steps
+    AND
+    the last 3 completed H4 closes each remain above EMA20
+    AND
+    current H4 close > H4 close 3 bars ago
+
+Everything else stays frozen:
+- bearish M30 pullback;
+- bullish M30 confirmation closes above pullback high;
+- minimum stop distance = 1.0 x M30 ATR14 from actual next-open entry;
+- target = 2R;
+- maximum holding = 24h;
+- fee = 5.5 bps/side;
+- slippage = 2.0 bps/side;
+- economic-pass target/expected-cost ratio >=8.
+
+The evaluator also creates a matched-random control for every real entry. Random controls are drawn from the
+same causal H4 regime and the same calendar year/month/UTC hour, preserve the real trade's stop-distance
+fraction, use the same 2R target and 24h horizon, and exclude real strategy entry timestamps. This asks
+whether the M30 signal adds information above simply entering randomly inside the same trend regime.
+
+Run:
+
+    medium-trading btc-entry-v2-evaluate `
+      --json artifacts/bybit_btcusdt_entry_v2.json
+
+The report includes:
+- v1.1 versus v2 gross/net R and PF;
+- mean gross R and bootstrap 95% interval;
+- matched-random mean gross R;
+- per-trade gross edge versus matched random and bootstrap 95% interval;
+- MFE/MAE over 24h;
+- +1R and +2R before stop rates;
+- yearly results;
+- descriptive stop-distance bins: <0.8%, 0.8-1.0%, 1.0-1.5%, >=1.5%;
+- ordinary and 2x execution-cost results.
+
+The frozen information gate requires:
+- >=150 economic-pass v2 trades;
+- gross R >0;
+- gross PF >=1.10;
+- positive gross R in at least 2 of 3 development years;
+- matched-random coverage >=90%;
+- >=5 random matches/trade on average;
+- positive mean gross edge versus matched random;
+- bootstrap 95% lower bound of the matched-random edge >0;
+- +1R-before-stop rate above matched random.
+
+The frozen economic gate additionally requires:
+- net R >0 and PF >1.0 after normal costs;
+- net R >0 and PF >1.0 at 2x costs;
+- v2 net R > v1.1 net R;
+- v2 gross PF > v1.1 gross PF.
+
+Funding is deliberately not used to decide whether the entry itself contains information. If v2 first
+passes the information and execution-cost gates, funding must be added before any deployment claim.
+If v2 fails, do not tune a stop/day-of-week/2026-specific filter from the failed window. Reject this entry
+hypothesis and move to a materially different entry hypothesis or timeframe.
+
 The legacy daily gate remains strict and conjunctive for the older daily-income studies: at least 250 eligible sessions, at least 300 trades, >=70%
 active-session rate, >=45% profitable active days, positive average net R/session, net PF >=1.15,
 2x-cost PF >1.00, at least 2 positive yearly folds, >=60% positive months, worst day no worse than -2R,

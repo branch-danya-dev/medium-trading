@@ -1,4 +1,5 @@
 from dataclasses import replace
+from itertools import pairwise
 
 from medium_trading.domain import Candle, Side, Signal, StrategyContext
 
@@ -116,3 +117,65 @@ class CryptoTrendLongV11Strategy(CryptoTrendLongStrategy):
                 )
             )
         return sum(ranges) / period
+
+
+
+class CryptoTrendLongV2Strategy(CryptoTrendLongV11Strategy):
+    """
+    Entry v2: require persistent H4 trend before the unchanged M30 setup.
+
+    No new indicator or fitted numeric threshold is introduced. The existing
+    three-H4-bar slope lookback is reused to require trend persistence rather
+    than accepting a one-off recovery above EMA20.
+    """
+
+    name = "crypto_trend_long_v2"
+
+    def evaluate(self, context: StrategyContext) -> Signal | None:
+        signal = super().evaluate(context)
+        if signal is None:
+            return None
+
+        candles_4h = context.candles_4h
+        if len(candles_4h) < self.ema_period + self.ema_slope_lookback:
+            return None
+
+        ema_values = self._ema_series(
+            tuple(candle.close for candle in candles_4h),
+            self.ema_period,
+        )
+        persistence_bars = self.ema_slope_lookback
+        recent_ema = ema_values[-(persistence_bars + 1):]
+        if len(recent_ema) != persistence_bars + 1:
+            return None
+        if not all(
+            current > previous
+            for previous, current in pairwise(recent_ema)
+        ):
+            return None
+
+        recent_candles = candles_4h[-persistence_bars:]
+        recent_ema_for_closes = ema_values[-persistence_bars:]
+        if not all(
+            candle.close > ema
+            for candle, ema in zip(
+                recent_candles,
+                recent_ema_for_closes,
+                strict=True,
+            )
+        ):
+            return None
+
+        if candles_4h[-1].close <= candles_4h[-1 - persistence_bars].close:
+            return None
+
+        return replace(
+            signal,
+            strategy=self.name,
+            reasons=signal.reasons
+            + (
+                "persistent H4 regime: EMA20 rose on each of the last 3 completed H4 steps",
+                "last 3 completed H4 closes stayed above their EMA20",
+                "current completed H4 close is above the close 3 H4 bars ago",
+            ),
+        )

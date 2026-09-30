@@ -13,6 +13,7 @@ from medium_trading.backtest.validation import (
     evaluate_symbol,
 )
 from medium_trading.config import Settings
+from medium_trading.crypto_entry_v2 import evaluate_btc_entry_strategy_v2
 from medium_trading.crypto_long_baseline import (
     evaluate_btc_long_baseline,
     evaluate_btc_long_v1_1,
@@ -436,6 +437,27 @@ def main() -> None:
     btc_long_v1_1_corrected.add_argument("--risk", type=float, default=0.005)
     btc_long_v1_1_corrected.add_argument("--json", dest="json_output")
 
+    btc_entry_v2 = subparsers.add_parser("btc-entry-v2-evaluate")
+    btc_entry_v2.add_argument(
+        "--data",
+        default="data/bybit/BTCUSDT_M30.csv",
+        help="Frozen 2023-2025 Bybit BTCUSDT M30 development history",
+    )
+    btc_entry_v2.add_argument("--symbol", default="BTCUSDT")
+    btc_entry_v2.add_argument("--fee-bps-per-side", type=float, default=5.5)
+    btc_entry_v2.add_argument(
+        "--slippage-bps-per-side",
+        type=float,
+        default=2.0,
+    )
+    btc_entry_v2.add_argument(
+        "--starting-equity",
+        type=float,
+        default=1_000.0,
+    )
+    btc_entry_v2.add_argument("--risk", type=float, default=0.005)
+    btc_entry_v2.add_argument("--json", dest="json_output")
+
     btc_noise_ml = subparsers.add_parser("btc-long-noise-ml-v0-1-evaluate")
     btc_noise_ml.add_argument(
         "--data",
@@ -842,6 +864,8 @@ def main() -> None:
         _btc_long_v1_1_evaluate(args)
     elif args.command == "btc-long-v1-1-corrected-evaluate":
         _btc_long_v1_1_corrected_evaluate(args)
+    elif args.command == "btc-entry-v2-evaluate":
+        _btc_entry_v2_evaluate(args)
     elif args.command == "btc-long-noise-ml-v0-1-evaluate":
         _btc_long_noise_ml_v0_1_evaluate(args)
     elif args.command == "btc-long-move-ml-v0-2-evaluate":
@@ -1525,6 +1549,64 @@ def _btc_long_v1_1_corrected_evaluate(args: argparse.Namespace) -> None:
         )
         print(f"wrote corrected BTC LONG v1.1 report to {output}")
 
+
+def _btc_entry_v2_evaluate(args: argparse.Namespace) -> None:
+    candles = load_candles(Path(args.data))
+    payload = evaluate_btc_entry_strategy_v2(
+        candles_30m=candles,
+        symbol=args.symbol,
+        fee_bps_per_side=args.fee_bps_per_side,
+        slippage_bps_per_side=args.slippage_bps_per_side,
+        starting_equity=args.starting_equity,
+        risk_fraction=args.risk,
+    )
+    baseline = payload["baseline_v1_1"]
+    candidate = payload["candidate_v2"]
+    random_control = candidate["matched_random"]
+    gate = candidate["entry_gate"]
+
+    print("BTCUSDT Entry Strategy v2 — persistent H4 regime")
+    print(
+        f"v1.1 trades={baseline['trades']} "
+        f"gross={baseline['gross_r']:.2f}R "
+        f"net={baseline['net_r']:.2f}R "
+        f"gPF={baseline['gross_profit_factor']:.3f} "
+        f"PF={baseline['profit_factor']:.3f}"
+    )
+    print(
+        f"v2 trades={candidate['trades']} "
+        f"gross={candidate['gross_r']:.2f}R "
+        f"net={candidate['net_r']:.2f}R "
+        f"gPF={candidate['gross_profit_factor']:.3f} "
+        f"PF={candidate['profit_factor']:.3f}"
+    )
+    print(
+        f"v2 mean gross={candidate['mean_gross_r']:+.3f}R "
+        f"matched random={random_control['mean_random_gross_r']:+.3f}R "
+        f"edge={random_control['mean_gross_edge_r']:+.3f}R "
+        f"edge95={random_control['gross_edge_bootstrap_95pct']}"
+    )
+    print(
+        f"+1R before stop={candidate['reached_1r_before_stop_rate']:.1%} "
+        f"random={random_control['random_reached_1r_before_stop_rate']:.1%} "
+        f"2x_cost_net={candidate['2x_cost']['net_r']:.2f}R "
+        f"2x_cost_PF={candidate['2x_cost']['profit_factor']:.3f}"
+    )
+    print(
+        f"entry gate={'PASS' if gate['passes'] else 'FAIL'} "
+        f"information={'PASS' if gate['information_gate_passes'] else 'FAIL'} "
+        f"economics={'PASS' if gate['economic_gate_passes'] else 'FAIL'}"
+    )
+    print(f"conditions={gate['conditions']}")
+
+    if args.json_output:
+        output = Path(args.json_output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(
+            json.dumps(payload, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        print(f"wrote BTC entry v2 report to {output}")
 
 
 def _btc_long_noise_ml_v0_1_evaluate(args: argparse.Namespace) -> None:
