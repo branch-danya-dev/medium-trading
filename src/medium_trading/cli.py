@@ -70,6 +70,10 @@ from medium_trading.market_observer_v06 import (
     augment_market_observer_samples_with_trade_flow,
     evaluate_market_observer_v06,
 )
+from medium_trading.market_observer_v07 import (
+    build_confirmed_observer_samples,
+    evaluate_market_observer_v07,
+)
 from medium_trading.market_state_model import (
     evaluate_market_state_v01,
     extract_market_state_samples,
@@ -533,6 +537,16 @@ def main() -> None:
     market_observer_v06.add_argument("--trade-flow", required=True)
     market_observer_v06.add_argument("--json", dest="json_output")
 
+    market_observer_v07 = subparsers.add_parser(
+        "btc-market-observer-v0-7-evaluate"
+    )
+    market_observer_v07.add_argument("--m5", required=True)
+    market_observer_v07.add_argument("--open-interest", required=True)
+    market_observer_v07.add_argument("--account-ratio", required=True)
+    market_observer_v07.add_argument("--funding", required=True)
+    market_observer_v07.add_argument("--trade-flow", required=True)
+    market_observer_v07.add_argument("--json", dest="json_output")
+
     args = parser.parse_args()
     if args.command == "download-dukascopy":
         _download_dukascopy(args)
@@ -584,6 +598,8 @@ def main() -> None:
         _btc_market_observer_v0_5_evaluate(args)
     elif args.command == "btc-market-observer-v0-6-evaluate":
         _btc_market_observer_v0_6_evaluate(args)
+    elif args.command == "btc-market-observer-v0-7-evaluate":
+        _btc_market_observer_v0_7_evaluate(args)
 
 
 def _download_dukascopy(args: argparse.Namespace) -> None:
@@ -1663,6 +1679,77 @@ def _btc_market_observer_v0_6_evaluate(args: argparse.Namespace) -> None:
             encoding="utf-8",
         )
         print(f"wrote Market Observer v0.6 report to {output}")
+
+
+def _btc_market_observer_v0_7_evaluate(args: argparse.Namespace) -> None:
+    candles_5m = load_candles(Path(args.m5))
+    open_interest = load_open_interest(Path(args.open_interest))
+    account_ratio = load_account_ratio(Path(args.account_ratio))
+    funding = load_funding(Path(args.funding))
+    trade_flow = load_trade_flow(Path(args.trade_flow))
+
+    base_samples = extract_market_observer_samples(
+        candles_5m=candles_5m,
+        open_interest=open_interest,
+        account_ratio=account_ratio,
+        funding=funding,
+    )
+    flow_samples = augment_market_observer_samples_with_trade_flow(
+        base_samples,
+        trade_flow,
+    )
+    samples = build_confirmed_observer_samples(
+        samples=flow_samples,
+        candles_5m=candles_5m,
+        trade_flow=trade_flow,
+    )
+    payload = evaluate_market_observer_v07(samples)
+    combined = payload["combined"]
+    control = combined["delayed_control_without_confirmation"][
+        "ranking_and_calibration"
+    ]
+    confirmed = combined["confirmed_event_observer"][
+        "ranking_and_calibration"
+    ]
+    delta = combined["delta"]
+
+    print("BTCUSDT Market Observer v0.7")
+    print(
+        f"samples={combined['test_samples']} "
+        f"clear={combined['clear_samples']} "
+        f"excluded={combined['excluded_samples']} "
+        f"states={combined['state_distribution']}"
+    )
+    print(
+        f"control ROC_AUC={control['roc_auc']:.3f} "
+        f"PR_AUC={control['pr_auc']:.3f} "
+        f"PR_lift={control['pr_auc_lift_vs_base']:.2f}x"
+    )
+    print(
+        f"confirmed ROC_AUC={confirmed['roc_auc']:.3f} "
+        f"PR_AUC={confirmed['pr_auc']:.3f} "
+        f"PR_lift={confirmed['pr_auc_lift_vs_base']:.2f}x "
+        f"Brier={confirmed['brier_score']:.3f} "
+        f"ECE={confirmed['expected_calibration_error']:.3f}"
+    )
+    print(
+        f"delta ROC_AUC={delta['roc_auc']:+.3f} "
+        f"PR_AUC={delta['pr_auc']:+.3f} "
+        f"PR_lift={delta['pr_auc_lift_vs_base']:+.2f}x"
+    )
+    print(
+        "confirmation feature importance="
+        f"{combined['confirmed_event_observer']['confirmation_feature_importance']}"
+    )
+
+    if args.json_output:
+        output = Path(args.json_output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(
+            json.dumps(payload, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        print(f"wrote Market Observer v0.7 report to {output}")
 
 
 def _strategy_from_name(name: str) -> Strategy:

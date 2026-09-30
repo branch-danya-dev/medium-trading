@@ -993,6 +993,59 @@ PR-AUC lift, calibration and top-probability reversal concentration, separately 
 combined. Flow must improve ranking directionally in both yearly folds to justify keeping it. Do not tune
 v0.6 from the first result, and do not use 2026.
 
+v0.6 showed genuine but regime-dependent incremental information. Combined ROC-AUC improved from 0.5652
+to 0.5711 and PR-AUC from 0.1069 to 0.1122; top-5% and top-10% reversal concentration also improved.
+However, 2024 ROC-AUC deteriorated while 2025 improved, so taker flow is retained as context but the
+first-disturbance prediction moment remains too unstable.
+
+## Market Observer v0.7
+
+v0.7 tests one hypothesis only: the observer may be looking at the market too early.
+
+The original disturbance remains the episode anchor, but prediction moves exactly 15 minutes later, after
+three fully completed M5 bars. The original v0.6 market + taker-flow feature vector remains unchanged.
+The confirmed model adds only information that is genuinely known by T+15m:
+
+- adverse displacement from the disturbance close;
+- maximum adverse extension and mean close distance beyond the defended level;
+- counts of closes/touches beyond the level;
+- final reclaim and reclaim speed;
+- retest happened / retest held using the frozen 0.15 ATR tolerance;
+- post-event price-path efficiency, range and adverse-body fraction;
+- 15-minute post/pre candle-volume ratio;
+- post-event taker delta, notional delta and trade-count imbalance;
+- trend-aligned post-event delta;
+- shift in taker delta versus the pre-event 15 minutes;
+- aggressive-flow persistence;
+- trade-count activity versus the pre-event 2-hour average;
+- average buy-vs-sell trade-size imbalance.
+
+The control is intentionally evaluated on the same delayed samples and the same chronological folds, but
+receives only the original v0.6 features. This isolates the information value of waiting for confirmation.
+
+The binary target is unchanged:
+
+    REAL_REVERSAL vs TREND_SURVIVES
+
+The original disturbance labels are preserved. No candle or flow bucket ending after T+15m enters a
+feature. CatBoost parameters, class weighting, calibration, threshold-validation and 2024/2025 folds are
+unchanged; 2026 remains untouched.
+
+Run:
+
+    medium-trading btc-market-observer-v0-7-evaluate `
+      --m5 "data/bybit/state/BTCUSDT_M5.csv" `
+      --open-interest "data/bybit/state/BTCUSDT_OPEN_INTEREST_30M.csv" `
+      --account-ratio "data/bybit/state/BTCUSDT_ACCOUNT_RATIO_30M.csv" `
+      --funding "data/bybit/state/BTCUSDT_FUNDING.csv" `
+      --trade-flow "data/bybit/flow/BTCUSDT_TRADE_FLOW_M5.csv" `
+      --json artifacts/bybit_btcusdt_market_observer_v0_7.json
+
+Judge v0.7 by delayed-control versus confirmed-event ROC-AUC, PR-AUC, PR-AUC lift, calibration and
+top-probability reversal concentration separately in 2024 and 2025, then combined. Confirmation must
+improve ranking directionally in both development folds to survive. Do not test alternate 10/20-minute
+windows after seeing this result.
+
 The legacy daily gate remains strict and conjunctive for the older daily-income studies: at least 250 eligible sessions, at least 300 trades, >=70%
 active-session rate, >=45% profitable active days, positive average net R/session, net PF >=1.15,
 2x-cost PF >1.00, at least 2 positive yearly folds, >=60% positive months, worst day no worse than -2R,

@@ -5,6 +5,7 @@ import pytest
 from medium_trading import market_observer as observer
 from medium_trading import market_observer_v05 as observer_v05
 from medium_trading import market_observer_v06 as observer_v06
+from medium_trading import market_observer_v07 as observer_v07
 from medium_trading.data.bybit_trade_flow import TradeFlowPoint
 from medium_trading.domain import Candle
 
@@ -472,3 +473,133 @@ def test_v06_compares_flow_features_with_frozen_v05_baseline(
     assert len(
         combined["flow_enhanced_reversal"]["flow_feature_importance"]
     ) == len(observer_v06.FLOW_FEATURE_NAMES)
+
+
+
+def test_v07_confirmation_uses_exactly_three_completed_m5_bars() -> None:
+    event_time = datetime(2025, 1, 1, 4, 0, tzinfo=UTC)
+    sample = observer.MarketObserverSample(
+        event_time=event_time,
+        label_end_time=event_time + timedelta(hours=8),
+        trend_side="BULL",
+        event_type="BODY_BREAK",
+        features=tuple(
+            "BULL"
+            if index == 0
+            else "BODY_BREAK"
+            if index == 1
+            else "ASIA"
+            if index == 2
+            else "WED"
+            if index == 3
+            else 0.0
+            for index in range(len(observer_v06.FEATURE_NAMES))
+        ),
+        state_class="REAL_REVERSAL",
+        defended_level=100.0,
+        atr5=10.0,
+    )
+
+    candles = (
+        _bar(45, open_=101, high=102, low=100, close=101),
+        _bar(46, open_=101, high=102, low=100, close=101),
+        _bar(47, open_=101, high=101, low=97, close=98),
+        _bar(48, open_=98, high=99, low=95, close=96),
+        _bar(49, open_=96, high=97, low=94, close=95),
+        _bar(50, open_=95, high=96, low=93, close=94),
+        _bar(51, open_=94, high=160, low=94, close=150),
+    )
+    flow = []
+    for index in range(52):
+        buy_qty = 1.0
+        sell_qty = 1.0
+        if 48 <= index <= 50:
+            buy_qty = 1.0
+            sell_qty = 3.0
+        if index == 51:
+            buy_qty = 1000.0
+            sell_qty = 0.0
+        flow.append(
+            TradeFlowPoint(
+                timestamp=datetime(2025, 1, 1, tzinfo=UTC)
+                + timedelta(minutes=5 * index),
+                buy_qty=buy_qty,
+                sell_qty=sell_qty,
+                buy_notional=buy_qty * 100.0,
+                sell_notional=sell_qty * 100.0,
+                buy_count=max(1, int(buy_qty)),
+                sell_count=max(0, int(sell_qty)),
+            )
+        )
+
+    confirmed = observer_v07.build_confirmed_observer_samples(
+        samples=(sample,),
+        candles_5m=candles,
+        trade_flow=tuple(flow),
+    )
+
+    result = confirmed[0]
+    confirmation = result.features[len(observer_v06.FEATURE_NAMES) :]
+    assert result.event_time == event_time + timedelta(minutes=15)
+    assert result.state_class == "REAL_REVERSAL"
+    assert result.label_end_time == sample.label_end_time
+    assert confirmation[0] == pytest.approx(0.4)
+    assert confirmation[13] == pytest.approx(-0.5)
+
+
+def _v07_samples() -> tuple[observer.MarketObserverSample, ...]:
+    delayed = []
+    for sample in _v06_samples():
+        center = 1.5 if sample.state_class == "REAL_REVERSAL" else -1.0
+        confirmation = tuple(
+            center + (index % 5 - 2) * 0.01
+            for index in range(len(observer_v07.CONFIRMATION_FEATURE_NAMES))
+        )
+        delayed.append(
+            observer.MarketObserverSample(
+                event_time=sample.event_time + timedelta(minutes=15),
+                label_end_time=sample.label_end_time,
+                trend_side=sample.trend_side,
+                event_type=sample.event_type,
+                features=(*sample.features, *confirmation),
+                state_class=sample.state_class,
+                defended_level=sample.defended_level,
+                atr5=sample.atr5,
+            )
+        )
+    return tuple(delayed)
+
+
+def test_v07_compares_delayed_control_with_confirmed_features(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        observer_v06,
+        "REVERSAL_PARAMS",
+        {
+            **observer_v06.REVERSAL_PARAMS,
+            "iterations": 20,
+            "depth": 4,
+        },
+    )
+
+    payload = observer_v07.evaluate_market_observer_v07(_v07_samples())
+
+    assert payload["research_scope"]["prediction_time_shifted"] is True
+    assert payload["research_scope"]["prediction_delay_minutes"] == 15
+    assert payload["research_scope"]["labels_changed"] is False
+    assert [fold["test_year"] for fold in payload["folds"]] == [2024, 2025]
+
+    combined = payload["combined"]
+    assert combined["clear_samples"] == 2160
+    assert (
+        combined["confirmed_event_observer"]["ranking_and_calibration"][
+            "roc_auc"
+        ]
+        > 0.80
+    )
+    assert len(
+        combined["confirmed_event_observer"][
+            "confirmation_feature_importance"
+        ]
+    ) == len(observer_v07.CONFIRMATION_FEATURE_NAMES)
