@@ -353,13 +353,13 @@ def _fit_binary_observer(
     )
     calibration_pool = Pool(
         data=calibration_x,
-        label=calibration_truth,
+        label=list(calibration_truth),
         cat_features=list(CAT_FEATURE_INDICES),
         feature_names=list(feature_names),
     )
     validation_pool = Pool(
         data=validation_x,
-        label=validation_truth,
+        label=list(validation_truth),
         cat_features=list(CAT_FEATURE_INDICES),
         feature_names=list(feature_names),
     )
