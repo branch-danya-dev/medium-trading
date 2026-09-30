@@ -949,3 +949,36 @@ def test_market_observer_v0_7_forward_parser_uses_frozen_paths(
     )
     assert not hasattr(args, "starting_equity")
     assert not hasattr(args, "risk")
+
+
+
+def test_observer_long_policy_v1_parser_uses_frozen_defaults(
+    monkeypatch,
+) -> None:
+    captured = []
+
+    monkeypatch.setattr(
+        cli,
+        "_btc_observer_long_policy_v1_evaluate",
+        captured.append,
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "medium-trading",
+            "btc-observer-long-policy-v1-evaluate",
+        ],
+    )
+
+    cli.main()
+
+    args = captured[0]
+    assert args.m30 == "data/bybit/BTCUSDT_M30.csv"
+    assert args.m5 == "data/bybit/state/BTCUSDT_M5.csv"
+    assert args.trade_flow == "data/bybit/flow/BTCUSDT_TRADE_FLOW_M5.csv"
+    assert args.symbol == "BTCUSDT"
+    assert args.fee_bps_per_side == 5.5
+    assert args.slippage_bps_per_side == 2.0
+    assert args.starting_equity == 1_000.0
+    assert args.risk == 0.005
