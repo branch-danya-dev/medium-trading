@@ -2,6 +2,8 @@ from datetime import UTC, datetime, timedelta
 
 from medium_trading import market_observer as observer
 from medium_trading import market_observer_v05 as observer_v05
+from medium_trading import market_observer_v06 as observer_v06
+from medium_trading.data.bybit_trade_flow import TradeFlowPoint
 from medium_trading.domain import Candle
 
 
@@ -358,3 +360,113 @@ def test_v05_reversal_model_is_balanced_but_control_is_not() -> None:
     assert observer_v05.REVERSAL_PARAMS["auto_class_weights"] == "Balanced"
     assert "auto_class_weights" not in observer_v05.UNWEIGHTED_REVERSAL_PARAMS
     assert observer_v05.STATE_PARAMS["loss_function"] == "Logloss"
+
+
+
+def test_v06_trade_flow_uses_only_completed_buckets() -> None:
+    event_time = datetime(2023, 1, 1, 4, 0, tzinfo=UTC)
+    base_sample = observer.MarketObserverSample(
+        event_time=event_time,
+        label_end_time=event_time + timedelta(hours=8),
+        trend_side="BULL",
+        event_type="BODY_BREAK",
+        features=tuple(0.0 for _ in observer.FEATURE_NAMES),
+        state_class="REAL_REVERSAL",
+        defended_level=100.0,
+        atr5=10.0,
+    )
+    points = []
+    for index in range(49):
+        buy = 1.0
+        sell = 1.0
+        if index == 47:
+            buy = 1.0
+            sell = 9.0
+        if index == 48:
+            buy = 100.0
+            sell = 0.0
+        points.append(
+            TradeFlowPoint(
+                timestamp=datetime(2023, 1, 1, tzinfo=UTC)
+                + timedelta(minutes=5 * index),
+                buy_qty=buy,
+                sell_qty=sell,
+                buy_notional=buy * 100.0,
+                sell_notional=sell * 100.0,
+                buy_count=int(buy),
+                sell_count=int(sell),
+            )
+        )
+
+    augmented = observer_v06.augment_market_observer_samples_with_trade_flow(
+        (base_sample,),
+        tuple(points),
+    )
+
+    flow_features = augmented[0].features[len(observer.FEATURE_NAMES) :]
+    assert flow_features[0] == pytest.approx(-0.8)
+    assert flow_features[8] == pytest.approx(-0.8)
+
+
+def _v06_samples() -> tuple[observer.MarketObserverSample, ...]:
+    augmented = []
+    for sample in (
+        *_v05_samples(2023),
+        *_v05_samples(2024),
+        *_v05_samples(2025),
+    ):
+        flow_center = {
+            "NOISE": 0.8,
+            "CORRECTION": 0.0,
+            "REAL_REVERSAL": -0.8,
+        }[sample.state_class]
+        flow_features = tuple(
+            flow_center + (index % 3 - 1) * 0.01
+            for index in range(len(observer_v06.FLOW_FEATURE_NAMES))
+        )
+        augmented.append(
+            observer.MarketObserverSample(
+                event_time=sample.event_time,
+                label_end_time=sample.label_end_time,
+                trend_side=sample.trend_side,
+                event_type=sample.event_type,
+                features=(*sample.features, *flow_features),
+                state_class=sample.state_class,
+                defended_level=sample.defended_level,
+                atr5=sample.atr5,
+            )
+        )
+    return tuple(augmented)
+
+
+def test_v06_compares_flow_features_with_frozen_v05_baseline(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        observer_v06,
+        "REVERSAL_PARAMS",
+        {
+            **observer_v06.REVERSAL_PARAMS,
+            "iterations": 20,
+            "depth": 4,
+        },
+    )
+
+    payload = observer_v06.evaluate_market_observer_v06(_v06_samples())
+
+    assert payload["research_scope"]["labels_changed"] is False
+    assert payload["research_scope"]["base_features_changed"] is False
+    assert payload["research_scope"]["model_architecture_changed"] is False
+    assert [fold["test_year"] for fold in payload["folds"]] == [2024, 2025]
+
+    combined = payload["combined"]
+    assert combined["clear_samples"] == 2160
+    assert (
+        combined["flow_enhanced_reversal"]["ranking_and_calibration"][
+            "roc_auc"
+        ]
+        > 0.80
+    )
+    assert len(
+        combined["flow_enhanced_reversal"]["flow_feature_importance"]
+    ) == len(observer_v06.FLOW_FEATURE_NAMES)
