@@ -200,6 +200,8 @@ def extract_btc_long_noise_samples(
     slippage_bps_per_side: float = BTC_SLIPPAGE_BPS_PER_SIDE,
     starting_equity: float = 10_000.0,
     risk_fraction: float = 0.005,
+    trade_start: datetime = TRADE_START,
+    trade_end: datetime = TRADE_END,
 ) -> tuple[NoiseSample, ...]:
     """Extract the fixed v1.1 executed candidate stream for ML feasibility research."""
     config = BacktestConfig(
@@ -220,8 +222,8 @@ def extract_btc_long_noise_samples(
         candles_30m=candles,
         strategy=CryptoTrendLongV11Strategy(),
         config=config,
-        trade_start=TRADE_START,
-        trade_end=TRADE_END,
+        trade_start=trade_start,
+        trade_end=trade_end,
     )
 
     candles_4h = aggregate_candles(candles, 240)
