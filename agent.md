@@ -13,7 +13,7 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 - Legacy FX universe: EUR/USD, GBP/USD, USD/JPY, AUD/USD plus four external FX pairs used in validation.
 - Current market: Crypto, starting with BTC/USD.
 - Core data timeframe for the current candidate: native M5 with completed M15/M30/H1/H4 context.
-- Current research candidate: Bybit BTCUSDT Market Observer v0.6 for incremental taker-flow reversal information.
+- Current research candidate: Bybit BTCUSDT Market Observer v0.7 for 15-minute confirmed-event reversal observation.
 - Default project starting equity model: USD 1,000. The BTC Trend LONG v1 diagnostic baseline uses USD 10,000 so R-to-USD interpretation is explicit.
 - Default risk: 0.5% of equity per trade.
 - Maximum combined open risk: 1.0% of equity.
@@ -433,9 +433,58 @@ incremental information to the same binary REAL_REVERSAL-vs-TREND_SURVIVES obser
 - report all flow-feature importances so we can see whether CatBoost actually uses the new information;
 - v0.6 remains an observer research task only and emits no trading action or PnL conclusion.
 
-Do not tune v0.6 after its first result. If genuine taker flow does not improve reversal ranking
-consistently, do not add more boosting complexity; reassess the event/label formulation or move to a
-different market-information source.
+Market Observer v0.6 showed that genuine taker flow adds some information, but not with
+the yearly consistency required by the frozen robustness rule. Combined flow-enhanced ROC-AUC improved
+from 0.5652 to 0.5711 and PR-AUC from 0.1069 to 0.1122; PR-AUC lift improved from 1.294x to 1.358x.
+The top 5% and top 10% tails also improved materially. However, 2024 ROC-AUC fell by about 0.0104 while
+2025 improved by about 0.0141. The flow features are therefore retained as useful market context, but
+v0.6 does not establish that first-disturbance prediction is robust enough.
+
+The current frozen task is Market Observer v0.7. It changes only the prediction moment:
+- keep the original v0.4/v0.6 structural disturbance as the episode anchor;
+- do not predict at the disturbance close;
+- wait exactly 3 fully completed M5 bars / 15 wall-clock minutes after the disturbance;
+- the v0.6 market + taker-flow feature vector is preserved unchanged and remains visible to the model;
+- add only causal confirmation-state features from those 3 completed M5 bars and matching completed
+  taker-flow buckets;
+- the control model is evaluated on the exact same delayed samples and chronological splits but receives
+  only the original v0.6 features; this isolates the information value of waiting for confirmation;
+- the experimental model receives the same v0.6 features plus confirmation features;
+- labels remain the original disturbance outcome labels. REAL_REVERSAL still means the original structural
+  episode eventually satisfies the frozen v0.4 reversal definition; NOISE/CORRECTION together remain
+  TREND_SURVIVES for the binary target;
+- because prediction is intentionally delayed, market information observed inside the first 15 minutes is
+  valid input, not leakage. No candle or trade-flow bucket ending after T+15m may enter any feature;
+- CatBoost parameters, Balanced class weighting, Platt calibration, 60-day calibration window, later 60-day
+  threshold-validation window, 8-hour embargo and 2024/2025 development folds remain unchanged;
+- 2026 remains untouched;
+- v0.7 adds exactly these confirmation features:
+  * adverse displacement from disturbance close to T+15m in event ATR;
+  * maximum adverse extension beyond the defended level;
+  * mean close distance beyond the defended level;
+  * count of closes and touches beyond the defended level;
+  * final reclaim flag and reclaim speed;
+  * retest-happened and retest-held flags using the frozen 0.15 ATR tolerance;
+  * 15-minute post-event price-path efficiency and range in ATR;
+  * fraction of adverse-direction candle bodies;
+  * post/pre 15-minute candle-volume ratio;
+  * post-event taker delta, notional delta and trade-count imbalance over 15m;
+  * trend-aligned post-event taker delta;
+  * change in 15-minute taker delta versus the pre-event 15 minutes;
+  * post-event aggressive-flow persistence;
+  * post-event trade-count activity versus the pre-event 2-hour average;
+  * post-event average buy-vs-sell trade-size imbalance;
+- do not add order-book, liquidation data, alternate confirmation windows, regime interactions, YetiRank,
+  PairLogit, new labels or new CatBoost tuning in v0.7;
+- primary comparison is delayed control vs confirmed-event observer on identical samples;
+- report fold-by-fold and combined ROC-AUC, PR-AUC, PR-AUC lift, Brier/ECE, top-tail concentration,
+  past-only operating-point metrics, confirmation-feature importance and feature-rank stability;
+- v0.7 passes its feasibility purpose only if confirmation improves reversal ranking directionally in both
+  2024 and 2025, not merely in the combined aggregate;
+- v0.7 remains an observer research task and emits no BUY/SELL/HOLD/EXIT action and no PnL conclusion.
+
+Do not tune v0.7 after the first result. The single question is whether the observer was previously
+looking at the market too early.
 
 Daily Income Gate is frozen before the first result. A strategy passes only if all conditions hold across the combined fixed test years:
 - at least 250 eligible session days;
