@@ -1082,6 +1082,56 @@ Read the audit by comparing full-v0.7 versus unresolved-only ROC-AUC, PR-AUC and
 for 2024 and 2025 and combined. If the unresolved-only confirmed observer remains materially above the
 delayed control in both years, the 15-minute confirmation result is not merely a target-overlap artifact.
 
+The audit passed. Roughly half of clear 2024-2025 cases were already resolved at T+15, so the original
+full-sample ROC-AUC 0.846 was partly inflated. After removing all such cases without retraining or
+recalibration, confirmed v0.7 still achieved ROC-AUC 0.7065 and PR-AUC 0.2875 versus the delayed control
+at 0.5567 / 0.2031, with the advantage remaining positive in both 2024 and 2025.
+
+## Frozen v0.7 forward validation — 2026
+
+2026 is now opened once as untouched forward data. Do not tune v0.7 from this result.
+
+The frozen forward window is:
+
+    2026-01-01T00:00:00Z <= event_time < 2026-09-30T00:00:00Z
+
+September 29, 2026 is the last included full UTC day. Download a separate forward bundle with warmup from
+November 1, 2025 so the existing 2023-2025 development files are not overwritten:
+
+    medium-trading download-bybit-state `
+      --symbol BTCUSDT `
+      --from 2025-11-01 `
+      --to 2026-09-29 `
+      --output-dir data/bybit/forward2026/state
+
+    medium-trading download-bybit-trade-flow `
+      --symbol BTCUSDT `
+      --from 2025-11-01 `
+      --to 2026-09-29 `
+      --workers 2 `
+      --output-dir data/bybit/forward2026/flow
+
+Then run the one-shot forward evaluator:
+
+    medium-trading btc-market-observer-v0-7-forward-evaluate `
+      --json artifacts/bybit_btcusdt_market_observer_v0_7_forward_2026.json
+
+The command defaults to the frozen development bundle under data/bybit/state and data/bybit/flow and the
+separate forward bundle under data/bybit/forward2026. It trains, calibrates and selects the diagnostic
+threshold only from pre-2026 samples, then scores 2026 once.
+
+The primary forward evidence is the unresolved-at-T+15 subset. The pass gate was frozen before inspecting
+2026:
+- at least 100 unresolved clear samples;
+- unresolved confirmed ROC-AUC >= 0.65;
+- unresolved confirmed PR-AUC lift >= 1.40x versus the 2026 unresolved base rate;
+- unresolved confirmed ROC-AUC and PR-AUC must both exceed the delayed control;
+- unresolved top-10% reversal-rate lift >= 1.50x.
+
+Full-sample metrics and monthly unresolved metrics are reported as diagnostics. Brier/ECE are reported but
+are not forward pass/fail gates because no 2026 recalibration is allowed. If this one-shot window fails,
+do not modify v0.7 and rerun the same 2026 period as untouched forward validation.
+
 The legacy daily gate remains strict and conjunctive for the older daily-income studies: at least 250 eligible sessions, at least 300 trades, >=70%
 active-session rate, >=45% profitable active days, positive average net R/session, net PF >=1.15,
 2x-cost PF >1.00, at least 2 positive yearly folds, >=60% positive months, worst day no worse than -2R,
