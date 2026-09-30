@@ -6,6 +6,7 @@ from medium_trading import market_observer as observer
 from medium_trading import market_observer_v05 as observer_v05
 from medium_trading import market_observer_v06 as observer_v06
 from medium_trading import market_observer_v07 as observer_v07
+from medium_trading import market_observer_v07_audit as observer_v07_audit
 from medium_trading.data.bybit_trade_flow import TradeFlowPoint
 from medium_trading.domain import Candle
 
@@ -603,3 +604,94 @@ def test_v07_compares_delayed_control_with_confirmed_features(
             "confirmation_feature_importance"
         ]
     ) == len(observer_v07.CONFIRMATION_FEATURE_NAMES)
+
+
+
+def test_v07_overlap_prefix_resolves_noise_and_correction() -> None:
+    noise = (
+        _bar(0, high=108, low=99, close=107),
+        _bar(1, high=109, low=106, close=108),
+        _bar(2, high=110, low=107, close=109),
+    )
+    correction = (
+        _bar(0, high=101, low=92, close=93),
+        _bar(1, high=102, low=93, close=100),
+        _bar(2, high=108, low=99, close=107),
+    )
+
+    assert observer_v07_audit._resolved_label_from_prefix(
+        future=noise,
+        trend_side="BULL",
+        trend_price=107.5,
+        correction_price=92.5,
+    ) == "NOISE"
+    assert observer_v07_audit._resolved_label_from_prefix(
+        future=correction,
+        trend_side="BULL",
+        trend_price=107.5,
+        correction_price=92.5,
+    ) == "CORRECTION"
+
+
+def test_v07_overlap_never_infers_reversal_from_15m_prefix() -> None:
+    adverse_only = (
+        _bar(0, high=100, low=94, close=96),
+        _bar(1, high=97, low=90, close=92),
+        _bar(2, high=93, low=84, close=86),
+    )
+
+    assert observer_v07_audit._resolved_label_from_prefix(
+        future=adverse_only,
+        trend_side="BULL",
+        trend_price=107.5,
+        correction_price=92.5,
+    ) is None
+
+
+def test_v07_overlap_audit_scores_unresolved_without_retraining(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        observer_v06,
+        "REVERSAL_PARAMS",
+        {
+            **observer_v06.REVERSAL_PARAMS,
+            "iterations": 20,
+            "depth": 4,
+        },
+    )
+
+    samples = _v07_samples()
+    resolution = {}
+    resolved_count = 0
+    for sample in samples:
+        if (
+            sample.state_class in {"NOISE", "CORRECTION"}
+            and sample.event_time.day % 2 == 0
+        ):
+            resolution[sample.event_time] = sample.state_class
+            resolved_count += 1
+        else:
+            resolution[sample.event_time] = None
+
+    payload = observer_v07_audit.evaluate_market_observer_v07_overlap_audit(
+        samples=samples,
+        resolution_by_time=resolution,
+    )
+
+    assert payload["research_scope"]["model_retrained_for_clean_subset"] is False
+    assert payload["research_scope"]["features_changed"] is False
+    assert payload["research_scope"]["labels_changed"] is False
+    combined = payload["combined"]
+    assert combined["resolution"]["resolved_before_prediction"] > 0
+    assert combined["resolution"]["unresolved_at_prediction"] > 0
+    assert combined["resolution"]["resolved_before_prediction"] < resolved_count
+    assert combined["unresolved_only"]["samples"] < combined["clear_samples"]
+    assert (
+        combined["unresolved_only"]["confirmed"]["roc_auc"]
+        > 0.80
+    )
+    assert (
+        combined["unresolved_only"]["confirmed"]["samples"]
+        == combined["unresolved_only"]["samples"]
+    )
