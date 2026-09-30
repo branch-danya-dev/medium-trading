@@ -1,7 +1,3 @@
-from bisect import bisect_left
-from collections.abc import Iterable
-from datetime import datetime
-
 from medium_trading.crypto_long_baseline import (
     BTC_SLIPPAGE_BPS_PER_SIDE,
     BTC_TAKER_FEE_BPS_PER_SIDE,
