@@ -142,6 +142,8 @@ def test_entry_gate_requires_information_and_economic_edge() -> None:
             {"year": 2025, "gross_r": 15.0},
         ],
         "matched_random": {
+            "coverage": 0.98,
+            "average_matches_per_trade": 12.0,
             "mean_gross_edge_r": 0.15,
             "gross_edge_bootstrap_95pct": [0.03, 0.27],
             "random_reached_1r_before_stop_rate": 0.45,
