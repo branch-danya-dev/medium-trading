@@ -2,9 +2,9 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from medium_trading import market_observer_v06 as observer_v06
 from medium_trading import observer_long_integration as integration
 from medium_trading import observer_runtime
-from medium_trading import market_observer_v06 as observer_v06
 from medium_trading.backtest.model import BacktestTrade
 from medium_trading.domain import Candle, Side
 from medium_trading.market_observer import MarketObserverSample
