@@ -1,4 +1,3 @@
-from collections import Counter
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
 from math import ceil
