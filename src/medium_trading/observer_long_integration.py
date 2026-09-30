@@ -441,6 +441,10 @@ def _comparison_summary(
                 decision.action is LongPolicyAction.HOLD_LONG
                 for decision in all_decisions
             ),
+            "warning_long_decisions": sum(
+                decision.action is LongPolicyAction.WARNING_LONG
+                for decision in all_decisions
+            ),
             "exit_long_decisions": sum(
                 decision.action is LongPolicyAction.EXIT_LONG
                 for decision in all_decisions

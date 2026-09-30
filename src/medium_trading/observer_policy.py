@@ -11,6 +11,7 @@ class ObserverMarketState(str, Enum):
 class LongPolicyAction(str, Enum):
     NO_ACTION = "no_action"
     HOLD_LONG = "hold_long"
+    WARNING_LONG = "warning_long"
     EXIT_LONG = "exit_long"
 
 

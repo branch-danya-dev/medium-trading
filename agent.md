@@ -13,7 +13,7 @@ disprove a net trading edge after realistic costs. Engineering complexity is sec
 - Legacy FX universe: EUR/USD, GBP/USD, USD/JPY, AUD/USD plus four external FX pairs used in validation.
 - Current market: Crypto, starting with BTC/USD.
 - Core data timeframe for the current candidate: native M5 with completed M15/M30/H1/H4 context.
-- Current research candidate: Observer -> LONG Trading Policy v1 using frozen forward-validated Market Observer v0.7.
+- Current research candidate: Observer -> LONG Trading Policy v2 with stateful warning confirmation using frozen forward-validated Market Observer v0.7.
 - Default project starting equity model: USD 1,000. The BTC Trend LONG v1 diagnostic baseline uses USD 10,000 so R-to-USD interpretation is explicit.
 - Default risk: 0.5% of equity per trade.
 - Maximum combined open risk: 1.0% of equity.
@@ -528,49 +528,55 @@ All six pre-frozen forward conditions passed. Full 2026 clear-sample ROC-AUC was
 frozen as forward-validated observer evidence. 2026 is observed evidence from this point onward and must
 not be described as untouched again.
 
-The current frozen task is Observer -> LONG Trading Policy v1. The observer must remain an independent
-market observer and must never receive position or PnL state:
-- introduce a transport-neutral ObserverSnapshot message with timestamp, model version, trend side,
-  structural event type, calibrated P(REAL_REVERSAL), P(TREND_SURVIVES), frozen fold threshold and the
-  resulting market-state classification;
-- ObserverSnapshot must contain no position, entry, stop, target, PnL, MFE/MAE, risk or trading-action data;
-- a separate LongObserverPolicy translates observer state into a trade-management action;
-- frozen v1 action map for an already-open LONG:
-  * BULL + REAL_REVERSAL_RISK -> EXIT_LONG;
-  * BULL + TREND_SURVIVES -> HOLD_LONG;
-  * BEAR snapshot -> NO_ACTION, because that probability describes reversal of a bearish trend and must
-    not be reinterpreted as a LONG exit signal;
-- exit execution is the next native M5 open after the observer snapshot; on that same open, a stop gap or
-  target gap has priority over the observer exit;
-- use the exact v0.7 fold threshold selected from observer validation. Do not optimize a probability
-  threshold against trade PnL in v1;
-- walk-forward snapshot generation must train/calibrate/threshold on past clear labels but infer on every
-  structural event in the test year, including events whose eventual research label is AMBIGUOUS;
-- v1 development trading outcomes are 2024 and 2025 only; do not use 2026 trading outcomes in the first
-  policy-value experiment;
-- use the fixed economic-pass Trend LONG v1.1 executed candidate stream so observer-management value is
-  isolated from entry-selection changes;
-- entries, stops, 2R targets, 24-hour maximum holding time, fee assumptions and slippage assumptions remain
+Observer -> LONG Trading Policy v1 FAILED its frozen policy-value gate, while still showing that observer
+messages contain some economic value. On 279 fixed trades, baseline net R was -21.45R and v1 managed
+net R was -19.01R, a +2.44R improvement. 146 observer exits produced +2.44R total delta net R; 98 exits
+improved their trade, 48 worsened it, 91 avoided a later baseline stop and 32 prematurely exited trades
+that later reached the 2R target. The failure was structural rather than a failure of Market Observer v0.7:
+managed PF fell from 0.890 to 0.864, max drawdown rose slightly from 13.39% to 13.59%, 2024 added
++6.17R but 2025 lost -3.74R. Classification threshold therefore must not be equated with an immediate
+full-position exit threshold.
+
+The current frozen task is Observer -> LONG Trading Policy v2. Market Observer v0.7 remains completely
+unchanged and still has no access to position or PnL state:
+- keep the existing transport-neutral ObserverSnapshot contract unchanged;
+- add a separate stateful LongObserverPolicyV2 with CLEAR and WARNING policy state;
+- frozen v2 state machine for an already-open LONG:
+  * CLEAR + BULL REAL_REVERSAL_RISK -> WARNING_LONG only; do not exit;
+  * WARNING + a later independent BULL REAL_REVERSAL_RISK -> EXIT_LONG;
+  * WARNING + BULL TREND_SURVIVES -> HOLD_LONG and clear WARNING;
+  * any BEAR snapshot -> NO_ACTION and clear stale BULL WARNING;
+- "independent" means the confirming reversal-risk snapshot timestamp must be strictly later than the
+  snapshot that armed WARNING; event type does not have to differ;
+- use the exact same fold-specific v0.7 thresholds as v1. Do not optimize any probability threshold against
+  trade PnL;
+- every trade starts in CLEAR state; warning state must never leak from one trade into another;
+- EXIT_LONG still executes at the next native M5 open; stop-gap or target-gap on that same open retains
+  priority;
+- use exactly the same 2024-2025 walk-forward snapshots, including inference on future-AMBIGUOUS events;
+- use exactly the same economic-pass Trend LONG v1.1 executed candidate stream;
+- entries, stops, 2R targets, 24-hour maximum holding time, fees, slippage and 2x-cost stress remain
   unchanged;
-- no entry blocking in v1;
-- no replacement trade is introduced after an observer early exit in v1; this first experiment measures
-  open-position management only;
-- compare baseline native-M5 path versus observer-managed native-M5 path for exactly the same trades;
-- report net/gross R, PF, drawdown, 2x-cost results, observer message counts, HOLD/EXIT/NO_ACTION counts,
-  observer-exit improvement/worsening, avoided baseline stops, premature exits before baseline targets and
-  per-year deltas;
-- the policy-value gate is frozen before the first PnL result:
+- no entry blocking and no replacement trades in v2;
+- do not use 2026 trading outcomes in the v2 development policy-value experiment;
+- report baseline, frozen v1 and v2 side-by-side plus WARNING/HOLD/EXIT/NO_ACTION counts, confirmed-exit
+  improvement/worsening, avoided stops, premature target exits, per-year deltas and 2x-cost results;
+- the v2 policy-value gate is frozen before the first v2 PnL result:
   * at least 100 managed trades;
-  * combined observer-managed net R must exceed baseline net R;
-  * observer-managed PF must exceed baseline PF;
-  * observer-managed max drawdown must not exceed baseline max drawdown;
-  * delta net R must be positive in both 2024 and 2025;
-  * observer-triggered exits must add positive total delta net R;
-  * observer-managed 2x-cost net R must exceed baseline 2x-cost net R;
-- this gate measures incremental trade-management value only. It must not be described as proof that the
-  underlying Trend LONG strategy is profitable;
-- do not tune v0.7 or LongObserverPolicy v1 after the first 2024-2025 PnL result. If the gate passes, freeze
-  the communication/policy rule before any separate use of already-observed 2026 trading outcomes.
+  * v2 combined delta net R versus baseline > 0;
+  * v2 managed net R must exceed v1 managed net R;
+  * v2 PF must exceed baseline PF;
+  * v2 PF must exceed v1 PF;
+  * v2 max drawdown must not exceed baseline max drawdown;
+  * v2 delta net R must be positive in both 2024 and 2025;
+  * confirmed v2 exits must add positive total delta net R;
+  * v2 2x-cost net R must exceed baseline 2x-cost net R;
+  * v2 2x-cost net R must exceed v1 2x-cost net R;
+  * v2 must produce fewer premature exits before baseline targets than v1;
+- this remains an incremental position-management test only and must not be described as proof that the
+  underlying Trend LONG entry strategy is profitable;
+- do not tune v0.7, warning count, reset rules or any probability threshold after the first v2 result.
+  If v2 passes, freeze the policy before any separate 2026 trading-outcome evaluation.
 
 Daily Income Gate is frozen before the first result. A strategy passes only if all conditions hold across the combined fixed test years:
 - at least 250 eligible session days;
