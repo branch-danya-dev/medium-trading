@@ -61,6 +61,7 @@ from medium_trading.market_observer import (
     evaluate_market_observer_v04,
     extract_market_observer_samples,
 )
+from medium_trading.market_observer_v05 import evaluate_market_observer_v05
 from medium_trading.market_state_model import (
     evaluate_market_state_v01,
     extract_market_state_samples,
@@ -494,6 +495,15 @@ def main() -> None:
     market_observer.add_argument("--funding", required=True)
     market_observer.add_argument("--json", dest="json_output")
 
+    market_observer_v05 = subparsers.add_parser(
+        "btc-market-observer-v0-5-evaluate"
+    )
+    market_observer_v05.add_argument("--m5", required=True)
+    market_observer_v05.add_argument("--open-interest", required=True)
+    market_observer_v05.add_argument("--account-ratio", required=True)
+    market_observer_v05.add_argument("--funding", required=True)
+    market_observer_v05.add_argument("--json", dest="json_output")
+
     args = parser.parse_args()
     if args.command == "download-dukascopy":
         _download_dukascopy(args)
@@ -539,6 +549,8 @@ def main() -> None:
         _btc_market_structure_events_v0_3_evaluate(args)
     elif args.command == "btc-market-observer-v0-4-evaluate":
         _btc_market_observer_v0_4_evaluate(args)
+    elif args.command == "btc-market-observer-v0-5-evaluate":
+        _btc_market_observer_v0_5_evaluate(args)
 
 
 def _download_dukascopy(args: argparse.Namespace) -> None:
@@ -1468,6 +1480,67 @@ def _btc_market_observer_v0_4_evaluate(args: argparse.Namespace) -> None:
             encoding="utf-8",
         )
         print(f"wrote Market Observer v0.4 report to {output}")
+
+
+def _btc_market_observer_v0_5_evaluate(args: argparse.Namespace) -> None:
+    candles_5m = load_candles(Path(args.m5))
+    open_interest = load_open_interest(Path(args.open_interest))
+    account_ratio = load_account_ratio(Path(args.account_ratio))
+    funding = load_funding(Path(args.funding))
+
+    samples = extract_market_observer_samples(
+        candles_5m=candles_5m,
+        open_interest=open_interest,
+        account_ratio=account_ratio,
+        funding=funding,
+    )
+    payload = evaluate_market_observer_v05(samples)
+    combined = payload["combined"]
+    weighted = combined["weighted_reversal"]["ranking_and_calibration"]
+    unweighted = combined["unweighted_reversal_control"][
+        "ranking_and_calibration"
+    ]
+    hierarchy = combined["hierarchical"]
+    reversal = hierarchy["per_class"]["REAL_REVERSAL"]
+
+    print("BTCUSDT Market Observer v0.5")
+    print(
+        f"samples={combined['test_samples']} "
+        f"clear={combined['clear_samples']} "
+        f"excluded={combined['excluded_samples']} "
+        f"states={combined['state_distribution']}"
+    )
+    print(
+        f"weighted reversal ROC_AUC={weighted['roc_auc']:.3f} "
+        f"PR_AUC={weighted['pr_auc']:.3f} "
+        f"PR_lift={weighted['pr_auc_lift_vs_base']:.2f}x "
+        f"Brier={weighted['brier_score']:.3f} "
+        f"ECE={weighted['expected_calibration_error']:.3f}"
+    )
+    print(
+        f"unweighted control ROC_AUC={unweighted['roc_auc']:.3f} "
+        f"PR_AUC={unweighted['pr_auc']:.3f} "
+        f"PR_lift={unweighted['pr_auc_lift_vs_base']:.2f}x"
+    )
+    print(
+        f"hierarchical macro_F1={hierarchy['macro_f1']:.3f} "
+        f"reversal_precision={reversal['precision']:.1%} "
+        f"reversal_recall={reversal['recall']:.1%} "
+        f"reversal_lift={reversal['precision_lift']:.2f}x "
+        f"macro_AUC={hierarchy['macro_roc_auc_ovr']:.3f}"
+    )
+    print(
+        f"weighted top fractions={weighted['top_fraction_lift']}"
+    )
+
+    if args.json_output:
+        output = Path(args.json_output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(
+            json.dumps(payload, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        print(f"wrote Market Observer v0.5 report to {output}")
 
 
 def _strategy_from_name(name: str) -> Strategy:
